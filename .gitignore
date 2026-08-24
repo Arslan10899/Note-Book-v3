@@ -1,0 +1,17 @@
+# Runtime data — do not upload
+assistant.db
+assistant.db-wal
+assistant.db-shm
+uploads/
+__pycache__/
+*.pyc
+
+# Environment / secrets
+.env
+venv/
+.venv/
+secret.key
+
+# OS junk
+Thumbs.db
+.DS_Store
