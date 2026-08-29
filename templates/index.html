@@ -21,6 +21,7 @@
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
   <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
+  <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&family=Open+Sans:wght@400;600;700&family=Lato:wght@400;700&family=Montserrat:wght@400;600;700&family=Poppins:wght@400;600&family=Raleway:wght@400;600;700&family=Quicksand:wght@500;600&family=Ubuntu:wght@400;500;700&family=Merriweather:wght@400;700&family=Playfair+Display:wght@400;700&family=Source+Code+Pro:wght@400;600&family=JetBrains+Mono:wght@400;600;700&family=Caveat:wght@500;700&family=Dancing+Script:wght@500;700&display=swap" rel="stylesheet" media="print" onload="this.media='all'" />
   <script src="/static/js/tailwind.js?v=11"></script>
   <script>
     tailwind.config = {
@@ -76,9 +77,13 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7Z"/><path d="M14 2v4a2 2 0 0 1 2 2h4"/><path d="M10 9H8"/><path d="M16 13H8"/><path d="M16 17H8"/></svg>
         <span>Notes</span>
       </a>
-      <a href="#" class="nav-link" data-view="pages">
+<a href="#" class="nav-link" data-view="pages">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8"/><path d="M8 11h6"/></svg>
         <span>Pages</span>
+      </a>
+      <a href="#" class="nav-link" data-view="webportals">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        <span>Web portals</span>
       </a>
       <a href="#" class="nav-link" data-view="schedule">
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 2v4"/><path d="M16 2v4"/><rect width="18" height="18" x="3" y="4" rx="2"/><path d="M3 10h18"/><path d="M8 14h.01"/><path d="M12 14h.01"/><path d="M16 14h.01"/><path d="M8 18h.01"/><path d="M12 18h.01"/><path d="M16 18h.01"/></svg>
@@ -296,29 +301,46 @@
 
 
         <div id="note-viewer-wrap" class="hidden">
-          <div class="card mx-auto max-w-4xl">
-            <div class="flex items-center gap-2 border-b border-border p-3">
-              <button id="viewer-back-btn" class="btn btn-ghost btn-icon" title="Back">
-                <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
-              </button>
-              <div class="min-w-0 flex-1">
-                <h2 id="viewer-title" class="truncate text-lg font-semibold"></h2>
-                <p id="viewer-meta" class="text-xs text-muted-foreground"></p>
+          <div id="note-reader" class="nr-related">
+            <aside id="related-panel" class="nr-aside" aria-label="Related notes"></aside>
+
+            <div id="viewer-main-card" class="card min-w-0 flex-1">
+              <div class="flex flex-wrap items-center gap-2 border-b border-border p-3">
+                <button id="viewer-back-btn" class="btn btn-ghost btn-icon" title="Back">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </button>
+                <div class="min-w-0 flex-1">
+                  <h2 id="viewer-title" class="truncate text-lg font-semibold"></h2>
+                  <p id="viewer-meta" class="text-xs text-muted-foreground"></p>
+                </div>
+                <div id="viewer-mode" class="seg" role="group" title="View layout">
+                  <button type="button" data-mode="focus" title="Focus — clean reading view">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </button>
+                  <button type="button" data-mode="related" title="Related — notes sidebar on the left">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="18" x="3" y="3" rx="1"/><rect width="7" height="7" x="14" y="3" rx="1"/><rect width="7" height="7" x="14" y="14" rx="1"/></svg>
+                  </button>
+                  <button type="button" data-mode="detail" title="Detail — related notes + note info panel">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="7" height="18" x="3" y="3" rx="1"/><rect width="14" height="7" x="10" y="14" rx="1"/><rect width="14" height="7" x="10" y="3" rx="1"/></svg>
+                  </button>
+                </div>
+                <button id="viewer-share-btn" class="btn btn-outline btn-sm" title="Share this note with a link">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M4 12v8a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-8"/><polyline points="16 6 12 2 8 6"/><line x1="12" x2="12" y1="2" y2="15"/></svg>
+                  Share
+                </button>
+                <button id="viewer-print-btn" class="btn btn-outline btn-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
+                  Print
+                </button>
+                <button id="viewer-edit-btn" class="btn btn-outline btn-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
+                  Edit
+                </button>
               </div>
-              <a id="viewer-excel-link" href="#" class="btn btn-outline btn-sm" download title="Export this note to Excel">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
-                Excel
-              </a>
-              <button id="viewer-print-btn" class="btn btn-outline btn-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 9V2h12v7"/><path d="M6 18H4a2 2 0 0 1-2-2v-5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2v5a2 2 0 0 1-2 2h-2"/><rect x="6" y="14" width="12" height="8"/></svg>
-                Print
-              </button>
-              <button id="viewer-edit-btn" class="btn btn-outline btn-sm">
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg>
-                Edit
-              </button>
+              <div id="viewer-content" class="note-editor viewer-body min-h-[240px] p-6 sm:p-8"></div>
             </div>
-            <div id="viewer-content" class="note-editor min-h-[200px] p-6"></div>
+
+            <aside id="detail-panel" class="nr-aside" aria-label="Note details"></aside>
           </div>
         </div>
       </section>
@@ -403,6 +425,23 @@
               </section>
             </div>
           </div>
+        </div>
+      </section>
+
+      <section id="view-webportals" class="view hidden space-y-4">
+        <div class="card">
+          <div class="flex flex-wrap items-center gap-3 border-b border-border p-4">
+            <div>
+              <h3 class="card-title">Web portals</h3>
+              <p class="text-xs text-muted-foreground">Daily-use websites, all in one place</p>
+            </div>
+            <span id="portals-count-badge" class="badge badge-secondary">0</span>
+            <button id="portals-add-btn" class="btn btn-primary ml-auto">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 12h14"/><path d="M12 5v14"/></svg>
+              New Portal
+            </button>
+          </div>
+          <div id="portals-grid" class="grid gap-4 p-4 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4"></div>
         </div>
       </section>
 
@@ -526,6 +565,7 @@
             </div>
             <div class="space-y-2 rounded-lg border border-dashed border-border p-4">
               <label class="text-sm font-medium">Restore backup</label>
+              <p class="text-xs text-muted-foreground">JSON backup includes notes, tasks, routines, pages, share links &amp; web portals</p>
               <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="pick-json-btn" class="btn btn-outline btn-sm">
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
@@ -592,7 +632,7 @@
                   </button>
                 </div>
 
-                <div class="flex flex-wrap items-center gap-1 border-b border-border p-2">
+                <div id="editor-toolbar" class="flex flex-wrap items-center gap-1 border-b border-border p-2">
                   <button type="button" class="tool-btn" data-cmd="undo" title="Undo (Ctrl+Z)">
                     <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 7v6h6"/><path d="M21 17a9 9 0 0 0-9-9 9 9 0 0 0-6 2.3L3 13"/></svg>
                   </button>
@@ -601,18 +641,85 @@
                   </button>
                   <select id="font-family" class="toolbar-select" title="Font family">
                     <option value="" selected>Sans</option>
+                    <optgroup label="Web Fonts (Google)">
+                      <option value="Roboto">Roboto</option>
+                      <option value="Open Sans">Open Sans</option>
+                      <option value="Lato">Lato</option>
+                      <option value="Montserrat">Montserrat</option>
+                      <option value="Poppins">Poppins</option>
+                      <option value="Raleway">Raleway</option>
+                      <option value="Quicksand">Quicksand</option>
+                      <option value="Ubuntu">Ubuntu</option>
+                      <option value="Merriweather">Merriweather</option>
+                      <option value="Playfair Display">Playfair Display</option>
+                      <option value="Source Code Pro">Source Code Pro</option>
+                      <option value="JetBrains Mono">JetBrains Mono</option>
+                      <option value="Caveat">Caveat</option>
+                      <option value="Dancing Script">Dancing Script</option>
+                    </optgroup>
+                    <optgroup label="Sans-Serif">
+                      <option value="Arial">Arial</option>
+                      <option value="Arial Black">Arial Black</option>
+                      <option value="Helvetica">Helvetica</option>
+                      <option value="Verdana">Verdana</option>
+                      <option value="Tahoma">Tahoma</option>
+                      <option value="Trebuchet MS">Trebuchet MS</option>
+                      <option value="Segoe UI">Segoe UI</option>
+                      <option value="Calibri">Calibri</option>
+                      <option value="Candara">Candara</option>
+                      <option value="Franklin Gothic Medium">Franklin Gothic Medium</option>
+                      <option value="Gill Sans MT">Gill Sans MT</option>
+                      <option value="Century Gothic">Century Gothic</option>
+                      <option value="Avenir Next">Avenir Next</option>
+                      <option value="Lucida Sans Unicode">Lucida Sans Unicode</option>
+                    </optgroup>
                     <optgroup label="Serif">
                       <option value="Georgia">Georgia</option>
                       <option value="Times New Roman">Times New Roman</option>
                       <option value="Cambria">Cambria</option>
+                      <option value="Garamond">Garamond</option>
+                      <option value="Book Antiqua">Book Antiqua</option>
+                      <option value="Palatino Linotype">Palatino Linotype</option>
+                      <option value="Baskerville Old Face">Baskerville Old Face</option>
+                      <option value="Bookman Old Style">Bookman Old Style</option>
+                      <option value="Century Schoolbook">Century Schoolbook</option>
+                      <option value="Goudy Old Style">Goudy Old Style</option>
+                      <option value="Constantia">Constantia</option>
+                      <option value="Rockwell">Rockwell</option>
                     </optgroup>
                     <optgroup label="Monospace">
                       <option value="Consolas">Consolas</option>
                       <option value="Courier New">Courier New</option>
+                      <option value="Courier">Courier</option>
+                      <option value="Lucida Console">Lucida Console</option>
+                      <option value="Lucida Sans Typewriter">Lucida Sans Typewriter</option>
                     </optgroup>
-                    <optgroup label="Display">
+                    <optgroup label="Handwriting & Script">
                       <option value="Comic Sans MS">Comic Sans MS</option>
+                      <option value="Ink Free">Ink Free</option>
+                      <option value="Segoe Script">Segoe Script</option>
+                      <option value="Segoe Print">Segoe Print</option>
+                      <option value="Brush Script MT">Brush Script MT</option>
+                      <option value="Lucida Handwriting">Lucida Handwriting</option>
+                      <option value="Monotype Corsiva">Monotype Corsiva</option>
+                      <option value="Snell Roundhand">Snell Roundhand</option>
+                      <option value="Papyrus">Papyrus</option>
+                      <option value="Kristen ITC">Kristen ITC</option>
+                      <option value="Freestyle Script">Freestyle Script</option>
+                      <option value="Viner Hand ITC">Viner Hand ITC</option>
+                      <option value="Matura MT Script Capitals">Matura MT Script Capitals</option>
+                    </optgroup>
+                    <optgroup label="Display & Decorative">
                       <option value="Impact">Impact</option>
+                      <option value="Broadway">Broadway</option>
+                      <option value="Castellar">Castellar</option>
+                      <option value="Copperplate Gothic Bold">Copperplate Gothic Bold</option>
+                      <option value="Algerian">Algerian</option>
+                      <option value="Bauhaus 93">Bauhaus 93</option>
+                      <option value="Forte">Forte</option>
+                      <option value="Goudy Stout">Goudy Stout</option>
+                      <option value="Stencil">Stencil</option>
+                      <option value="Old English Text MT">Old English Text MT</option>
                     </optgroup>
                   </select>
                   <select id="font-size" class="toolbar-select" title="Font size">
@@ -822,9 +929,9 @@
   <script>
     (function () {
       var v = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
-      var ok = ["tasks", "notes", "pages", "schedule", "calendar", "settings"];
+      var ok = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
       var target = ok.indexOf(v) >= 0 ? v : "dashboard";
-      ["dashboard", "tasks", "notes", "pages", "schedule", "calendar", "settings"].forEach(function (x) {
+      ["dashboard", "tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"].forEach(function (x) {
         var el = document.getElementById("view-" + x);
         if (el) el.classList.toggle("hidden", x !== target);
       });

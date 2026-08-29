@@ -25,7 +25,7 @@ let HOLIDAYS = {};
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", schedule: "Schedule", calendar: "Calendar", settings: "Settings" };
+const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -216,6 +216,7 @@ async function switchView(name) {
   else if (name === "tasks") loadTasks();
   else if (name === "notes") showNotesList();
   else if (name === "pages") showPagesList();
+  else if (name === "webportals") loadPortals();
   else if (name === "schedule") loadSchedule();
   else if (name === "calendar") {
     HOLIDAYS = buildHolidaysForYear(state.calY);
@@ -352,6 +353,8 @@ function setEditorOverlay(open) {
 
 function openEditor(id, kind = "note") {
   if (!requireWrite("edit notes")) return;
+  clearTimeout(markDirty._t);
+  markDirty._t = null;
   state.editorKind = kind;
   state.editingId = id;
   const doc = id ? currentNote() : null;
@@ -847,6 +850,21 @@ function applyRoleUI() {
   // View-only users see only Dashboard, Notes & Pages
   const restricted = new Set(["tasks", "schedule", "calendar", "settings"]);
   const isViewer = state.user?.role === "user";
+  // Page detail: hide write controls for viewers (backend still enforces 403)
+  const pageIconBtn = $("#page-icon-btn");
+  if (pageIconBtn && isViewer) {
+    pageIconBtn.classList.add("pointer-events-none", "opacity-70");
+    pageIconBtn.title = "View only account";
+  }
+  ["#page-note-new-btn", "#page-note-link-btn", "#page-task-form", "#page-task-link-btn"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.classList.toggle("hidden", isViewer);
+  });
+  const pageTitleInput = $("#page-title-input");
+  if (pageTitleInput) {
+    pageTitleInput.readOnly = isViewer;
+    pageTitleInput.classList.toggle("cursor-default", isViewer);
+  }
   $$(".nav-link").forEach((n) => {
     if (restricted.has(n.dataset.view)) n.classList.toggle("hidden", isViewer);
   });
@@ -1060,7 +1078,6 @@ let palSel = 0;
 
 function palCandidates() {
   const out = [];
-  const strip = (html) => stripHtml(html, 0);
   state.pages.forEach((p) =>
     out.push({
       kind: "page",
@@ -1068,13 +1085,13 @@ function palCandidates() {
       icon: p.icon || "📄",
       title: p.title || "Untitled",
       sub: `Page · ${state.notes.filter((x) => x.page_id === p.id).length} notes · updated ${relTime(p.updated_at)}`,
-      hay: `${p.title || ""} ${(p.content && strip(p.content)) || ""}`.toLowerCase(),
-      raw: `${p.title || ""} ${(p.content && strip(p.content)) || ""}`,
+      hay: `${p.title || ""} ${getStripped(p) || ""}`.toLowerCase(),
+      raw: `${p.title || ""} ${getStripped(p) || ""}`,
       ts: p.updated_at || "",
     })
   );
   state.notes.forEach((n) => {
-    const text = strip(n.content);
+    const text = getStripped(n);
     out.push({
       kind: "note",
       id: n.id,
@@ -1109,6 +1126,19 @@ function palCandidates() {
       hay: `${r.title} ${r.time || ""}`.toLowerCase(),
       raw: r.title,
       ts: "",
+    })
+  );
+  getPortals().forEach((pt) =>
+    out.push({
+      kind: "portal",
+      id: null,
+      icon: pt.type === "sheet" ? "📊" : "🌐",
+      title: pt.name,
+      sub: `Portal · ${pt.type === "sheet" ? "Google Sheet" : "Website"}${pt.notes ? ` · ${pt.notes}` : ""}`,
+      hay: `${pt.name} ${pt.notes || ""} ${hostOf(pt.url)}`.toLowerCase(),
+      raw: `${pt.name} ${pt.notes || ""}`,
+      ts: "",
+      url: pt.url,
     })
   );
   return out;
@@ -1170,7 +1200,7 @@ function palSuggest(cands) {
     );
     return l;
   };
-  const lists = [by("page"), by("note"), by("task"), by("routine")].filter((l) => l.length);
+  const lists = [by("page"), by("note"), by("task"), by("routine"), by("portal")].filter((l) => l.length);
   const items = [];
   for (let i = 0; items.length < 8; i++) {
     let added = false;
@@ -1186,7 +1216,7 @@ function palSuggest(cands) {
   return items;
 }
 
-const PAL_LABELS = { action: "Actions", page: "Pages", note: "Notes", task: "Tasks", routine: "Routines" };
+const PAL_LABELS = { action: "Actions", page: "Pages", note: "Notes", task: "Tasks", routine: "Routines", portal: "Web portals" };
 
 function palHL(text, q, m) {
   if (!m || !q) return escapeHtml(text);
@@ -1214,7 +1244,7 @@ function palRender() {
   const q = qRaw.toLowerCase();
   const statsEl = document.getElementById("palette-stats");
   if (statsEl) {
-    statsEl.textContent = `${state.pages.length} pages · ${state.notes.length} notes · ${state.tasks.length} tasks`;
+    statsEl.textContent = `${state.pages.length} pages · ${state.notes.length} notes · ${state.tasks.length} tasks · ${getPortals().length} portals`;
   }
   const cands = palCandidates();
 
@@ -1335,6 +1365,10 @@ function palActivate(it) {
     openViewer(it.id);
   } else if (it.kind === "task") switchView("tasks");
   else if (it.kind === "routine") switchView("schedule");
+  else if (it.kind === "portal") {
+    const url = normalUrl(it.url);
+    if (url) window.open(url, "_blank", "noopener");
+  }
 }
 
 function openPalette() {
@@ -1346,7 +1380,7 @@ function openPalette() {
     <div id="palette-panel" class="mx-4 w-full max-w-xl overflow-hidden rounded-2xl border border-border bg-popover shadow-2xl">
       <div class="flex items-center gap-3 border-b border-border px-4 py-3.5">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0 text-muted-foreground"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
-        <input id="palette-input" type="text" autocomplete="off" spellcheck="false" placeholder="Search pages, notes, tasks, routines..." class="w-full border-0 bg-transparent p-0 text-base outline-none placeholder:text-muted-foreground/60" />
+        <input id="palette-input" type="text" autocomplete="off" spellcheck="false" placeholder="Search pages, notes, tasks, routines, portals..." class="w-full border-0 bg-transparent p-0 text-base outline-none placeholder:text-muted-foreground/60" />
         <label class="flex shrink-0 cursor-pointer select-none items-center gap-1.5 rounded-md border border-border px-2 py-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground transition-colors hover:text-foreground" title="Deep: loose matching anywhere inside words — helps with spelling mistakes. Off: whole words only (UTI will not match COMPUTING).">
           <input type="checkbox" id="palette-deep" class="h-3 w-3 cursor-pointer" ${state.deepSearch ? "checked" : ""} />
           Deep
@@ -1418,6 +1452,16 @@ async function showPageDetail(id) {
     return;
   }
   state.currentPageId = id;
+  if (!$("#notes-editor-wrap").classList.contains("hidden")) {
+    // Landing on a page from the palette/nav while a note editor is open:
+    // flush pending changes, drop the overlay, and cancel the back-navigation flag.
+    await flushPendingSave();
+    hideImgToolbar();
+    hideColHandle();
+    setEditorOverlay(false);
+    $("#notes-editor-wrap").classList.add("hidden");
+    state.returnTo = null;
+  }
   switchViewShell("pages");
   $("#pages-list-wrap").classList.add("hidden");
   $("#page-detail-wrap").classList.remove("hidden");
@@ -1486,10 +1530,10 @@ function renderPageNotes(notes) {
               <p class="truncate text-xs text-muted-foreground">${escapeHtml(stripHtml(n.content, 90)) || "Empty note"}</p>
             </div>
             <span class="shrink-0 text-[10px] text-muted-foreground">${relTime(n.updated_at)}</span>
-            <div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            ${canWrite() ? `<div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
               <button class="tool-btn h-7 min-w-7" data-pnact="unlink" title="Remove from page"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/></svg></button>
               <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-pnact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
-            </div>
+            </div>` : ""}
           </div>`
         )
         .join("")
@@ -1502,7 +1546,7 @@ function renderPageTasks(tasks) {
     ? tasks
         .map(
           (t) => `
-          <div class="flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50" data-ptask="${t.id}">
+          <div class="group flex items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50" data-ptask="${t.id}">
             <button class="flex h-[19px] w-[19px] shrink-0 items-center justify-center rounded border ${t.done ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40 hover:border-primary"}" data-ptoggle="${t.id}">
               ${t.done ? `<svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>` : ""}
             </button>
@@ -1512,10 +1556,10 @@ function renderPageTasks(tasks) {
             </div>
             ${priorityBadge(t.priority)}
             ${dueChip(t)}
-            <div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            ${canWrite() ? `<div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
               <button class="tool-btn h-7 min-w-7" data-ptact="unlink" title="Remove from page"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/></svg></button>
               <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-ptact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
-            </div>
+            </div>` : ""}
           </div>`
         )
         .join("")
@@ -1615,15 +1659,26 @@ function renderTagsBar() {
 
 // ---------- Lightweight search index (rebuilt only when data changes) ----------
 let SEARCH_INDEX = null;
+const STRIP_CACHE = new Map(); // id-keyed stripped text cache (notes & pages)
+
+function stripCacheKey(item) {
+  return `${item.kind}:${item.id}`;
+}
+
+function getStripped(item) {
+  const key = stripCacheKey(item);
+  if (!STRIP_CACHE.has(key)) STRIP_CACHE.set(key, stripHtml(item.content, 0));
+  return STRIP_CACHE.get(key);
+}
 
 function buildSearchIndex() {
   const noteMap = new Map();
   state.notes.forEach((n) => {
-    noteMap.set(n.id, `${n.title || ""} ${n.tags || ""} ${stripHtml(n.content, 0)}`.toLowerCase());
+    noteMap.set(n.id, `${n.title || ""} ${n.tags || ""} ${getStripped({ kind: "note", id: n.id, content: n.content })}`.toLowerCase());
   });
   const pageMap = new Map();
   state.pages.forEach((p) => {
-    pageMap.set(p.id, `${p.title || ""} ${stripHtml(p.content, 0)}`.toLowerCase());
+    pageMap.set(p.id, `${p.title || ""} ${getStripped({ kind: "page", id: p.id, content: p.content })}`.toLowerCase());
   });
   return { noteMap, pageMap, stamp: `${state.notes.length}:${state.pages.length}` };
 }
@@ -1635,6 +1690,7 @@ function getSearchIndex() {
 
 function invalidateSearchIndex() {
   SEARCH_INDEX = null;
+  STRIP_CACHE.clear();
 }
 
 // every word of the query must match (AND).
@@ -1703,6 +1759,182 @@ function renderNotesGrid() {
     .join("");
 }
 
+// ---------- Note reader: related notes + details side panels ----------
+let viewerMode = localStorage.getItem("pa_viewer_mode") || "related";
+viewerMode = ["related", "focus", "detail"].includes(viewerMode) ? viewerMode : "related";
+let viewerCurrentId = null;
+
+const STOP_WORDS = new Set([
+  "the","a","an","and","or","but","for","with","from","this","that","these","those",
+  "you","your","our","have","has","had","are","was","were","not","its","then","than",
+  "about","into","them","they","their","will","can","may","might","just","very","been",
+  "being","would","should","could","there","here","all","any","some","what","when",
+  "where","which","who","how","why","too","do","does","did","is","of","in","on","at","it",
+]);
+
+function tokensOf(str) {
+  return (str || "").toLowerCase().match(/[a-z0-9]+/g) || [];
+}
+
+function relatedNotes(note) {
+  const myTags = new Set((note.tags || "").toLowerCase().split(",").map((t) => t.trim()).filter(Boolean));
+  const myWords = tokensOf(note.title + " " + getStripped({ kind: "note", id: note.id, content: note.content }));
+  const ranked = [];
+  for (const n of state.notes) {
+    if (n.id === note.id) continue;
+    let score = 0;
+    const tags = (n.tags || "").toLowerCase().split(",").map((t) => t.trim()).filter(Boolean);
+    score += tags.filter((t) => myTags.has(t)).length * 40;
+    const words = new Set(tokensOf(n.title + " " + getStripped({ kind: "note", id: n.id, content: n.content })));
+    let hits = 0;
+    for (const w of myWords) if (w.length > 3 && !STOP_WORDS.has(w) && words.has(w)) hits++;
+    score += Math.min(hits, 15) * 6;
+    if (score > 0) ranked.push({ note: n, score });
+  }
+  ranked.sort((a, b) => b.score - a.score || String(b.note.updated_at || "").localeCompare(String(a.note.updated_at || "")));
+  return ranked.slice(0, 9);
+}
+
+function renderRelatedPanel(note) {
+  const panel = $("#related-panel");
+  const list = relatedNotes(note);
+  panel.innerHTML = `
+    <div class="nr-panel-head">
+      <span class="nr-panel-title">Related notes</span>
+      <span class="badge badge-secondary">${list.length}</span>
+    </div>
+    <div class="p-2">
+      ${list.length
+        ? list
+            .map(
+              ({ note: n }) => `
+              <button class="nr-rel-item" data-switch-note="${n.id}">
+                <span class="nr-rel-title">${escapeHtml(n.title)}</span>
+                <span class="nr-rel-snippet">${escapeHtml(stripHtml(getStripped({ kind: "note", id: n.id, content: n.content }), 80)) || "No text"}</span>
+                ${
+                  (n.tags || "").trim()
+                    ? `<span class="nr-rel-tags">${(n.tags || "")
+                        .split(",")
+                        .filter((t) => t.trim())
+                        .slice(0, 3)
+                        .map((t) => `<span class="badge badge-secondary">#${escapeHtml(t.trim())}</span>`)
+                        .join("")}</span>`
+                    : ""
+                }
+              </button>`
+            )
+            .join("")
+        : `<p class="px-1 py-2 text-xs text-muted-foreground">No related notes — add shared tags to link notes together.</p>`}
+    </div>`;
+  panel.querySelectorAll("[data-switch-note]").forEach((b) =>
+    b.addEventListener("click", () => openViewer(Number(b.dataset.switchNote), state.returnTo === "page" ? "page" : null))
+  );
+}
+
+async function renderDetailPanel(note) {
+  const panel = $("#detail-panel");
+  const versions = await api(`/api/notes/${note.id}/versions`).catch(() => []);
+  if (viewerCurrentId !== note.id) return; // user already switched to another note
+  const page = note.page_id ? state.pages.find((p) => p.id === note.page_id) : null;
+  const tags = (note.tags || "").split(",").map((t) => t.trim()).filter(Boolean);
+  const tagChips = tags
+    .map((t) => `<button class="badge badge-secondary cursor-pointer hover:bg-accent" data-note-tag="${escapeHtml(t)}">#${escapeHtml(t)}</button>`, )
+    .join(" ");
+  panel.innerHTML = `
+    <div class="nr-panel-head"><span class="nr-panel-title">Details</span></div>
+    <div class="space-y-2.5 p-3 text-xs">
+      <div>
+        <p class="text-[10px] uppercase tracking-wide text-muted-foreground">Tags</p>
+        <p class="mt-1 flex flex-wrap gap-1">${tagChips || `<span class="text-muted-foreground">No tags</span>`}</p>
+      </div>
+      <div>
+        <p class="text-[10px] uppercase tracking-wide text-muted-foreground">Created</p>
+        <p class="mt-0.5">${escapeHtml(fmtStampFull(note.created_at))}</p>
+      </div>
+      <div>
+        <p class="text-[10px] uppercase tracking-wide text-muted-foreground">Updated</p>
+        <p class="mt-0.5">${escapeHtml(fmtStampFull(note.updated_at))}</p>
+      </div>
+      ${page ? `<div><p class="text-[10px] uppercase tracking-wide text-muted-foreground">Page</p><p class="mt-0.5">${escapeHtml(page.title)}</p></div>` : ""}
+      ${note.pinned ? `<div><p class="text-[10px] uppercase tracking-wide text-muted-foreground">Status</p><p class="mt-0.5">📌 Pinned</p></div>` : ""}
+      <div class="grid gap-1.5 pt-1">
+        <button class="btn btn-outline btn-sm w-full" id="detail-share-btn">🔗 Share link</button>
+        ${isAdminUser() ? `<button class="btn btn-outline btn-sm w-full hover:text-destructive" id="detail-del-btn">Delete note</button>` : ""}
+      </div>
+    </div>
+    <div class="border-t border-border p-3">
+      <p class="mb-2 text-[11px] font-bold uppercase tracking-wide text-muted-foreground">Versions (${versions.length})</p>
+      ${
+        versions.length
+          ? `<div class="max-h-44 space-y-1 overflow-y-auto pr-1">${versions
+              .map(
+                (v) => `
+              <div class="flex items-center justify-between gap-2 rounded-lg border border-border/70 px-2 py-1.5">
+                <span class="truncate text-[11px]" title="${escapeHtml(v.created_at)}">${escapeHtml(v.title)}</span>
+                <button class="btn btn-ghost btn-icon shrink-0" data-restore="${v.id}" title="Restore this version">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                </button>
+              </div>`
+              )
+              .join("")}</div>`
+          : `<p class="text-xs text-muted-foreground">No previous versions.</p>`
+      }
+    </div>`;
+  panel.querySelectorAll("[data-note-tag]").forEach((b) =>
+    b.addEventListener("click", () => {
+      state.activeTag = b.dataset.noteTag;
+      exitToNotesList();
+    })
+  );
+  const shareBtn = $("#detail-share-btn");
+  if (shareBtn) shareBtn.addEventListener("click", () => shareNoteDialog(note));
+  const delBtn = $("#detail-del-btn");
+  if (delBtn) {
+    delBtn.addEventListener("click", () =>
+      confirmDialog(`Delete "${note.title}"?`, async () => {
+        try {
+          await api(`/api/notes/${note.id}`, { method: "DELETE" });
+          state.notes = state.notes.filter((x) => x.id !== note.id);
+          invalidateSearchIndex();
+          toast("Note deleted");
+          exitToNotesList();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      })
+    );
+  }
+  panel.querySelectorAll("[data-restore]").forEach((b) =>
+    b.addEventListener("click", () =>
+      confirmDialog(
+        "Restore this version? Your current content will be saved as a version first.",
+        async () => {
+          try {
+            const updated = await api(`/api/notes/${note.id}/restore`, {
+              method: "POST",
+              body: JSON.stringify({ version_id: Number(b.dataset.restore) }),
+            });
+            Object.assign(note, updated);
+            invalidateSearchIndex();
+            openViewer(note.id, state.returnTo === "page" ? "page" : null);
+            toast("Version restored");
+          } catch (err) {
+            toast(err.message, "error");
+          }
+        },
+        "Restore"
+      )
+    )
+  );
+}
+
+function applyViewerMode() {
+  const wrap = $("#note-reader");
+  wrap.classList.remove("nr-focus", "nr-related", "nr-detail");
+  wrap.classList.add("nr-" + viewerMode);
+  $$("#viewer-mode [data-mode]").forEach((b) => b.classList.toggle("active", b.dataset.mode === viewerMode));
+}
+
 function openViewer(id, from = null) {
   let note = state.notes.find((n) => n.id === id);
   if (!note) {
@@ -1711,6 +1943,7 @@ function openViewer(id, from = null) {
     api("/api/notes")
       .then((fresh) => {
         state.notes = fresh;
+        invalidateSearchIndex();
         if (state.notes.some((n) => n.id === id)) openViewer(id, from);
         else toast("Note not found — it may have been deleted", "error");
       })
@@ -1728,8 +1961,19 @@ function openViewer(id, from = null) {
   $("#viewer-meta").innerHTML = `Created ${fmtStampFull(note.created_at)} · Updated ${relTime(note.updated_at)}${tagsHtml ? ` · ${tagsHtml}` : ""}`;
   $("#viewer-content").innerHTML = note.content || "<p class='text-muted-foreground'>Empty note</p>";
   $("#viewer-edit-btn").onclick = () => openEditor(note.id);
-  $("#viewer-excel-link").href = `/api/notes/${note.id}/export.xlsx`;
+  $("#viewer-share-btn").onclick = () => shareNoteDialog(note);
   $("#viewer-print-btn").onclick = () => printNote(note);
+  applyViewerMode();
+  viewerCurrentId = note.id;
+  $$("#viewer-mode [data-mode]").forEach((b) => {
+    b.onclick = () => {
+      viewerMode = b.dataset.mode;
+      localStorage.setItem("pa_viewer_mode", viewerMode);
+      applyViewerMode();
+    };
+  });
+  renderRelatedPanel(note);
+  renderDetailPanel(note);
   setEditorOverlay(false);
   if (state.view !== "notes") {
     // Opened from another context (e.g. page detail rows) — switch the visible section
@@ -1764,6 +2008,93 @@ ${note.content || "<p>Empty note</p>"}
 <script>window.onload=function(){setTimeout(function(){window.print()},150)}<\/script>
 </body></html>`);
   w.document.close();
+}
+
+async function copyText(text) {
+  try {
+    await navigator.clipboard.writeText(text);
+    return true;
+  } catch (e) {
+    const ta = document.createElement("textarea");
+    ta.value = text;
+    ta.style.position = "fixed";
+    ta.style.opacity = "0";
+    document.body.appendChild(ta);
+    ta.select();
+    let ok = false;
+    try { ok = document.execCommand("copy"); } catch (e2) {}
+    ta.remove();
+    return ok;
+  }
+}
+
+function shareNoteDialog(note) {
+  const $l = (id) => document.getElementById(id);
+  const render = (url) => {
+    openDialog(`
+      <div>
+        <div class="flex items-start gap-3">
+          <div class="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+            <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M14 11a5 5 0 0 0-7.54-.54l-3 3a5 5 0 0 0 7.07 7.07l1.71-1.71"/></svg>
+          </div>
+          <div>
+            <h3 class="text-base font-semibold">Share note</h3>
+            <p class="mt-0.5 text-sm text-muted-foreground">Anyone with this link can view “${escapeHtml(note.title)}” — no login required.</p>
+          </div>
+        </div>
+        <p id="share-status" class="mt-4 text-sm"></p>
+        ${
+          url
+            ? `<div class="mt-2 flex items-center gap-2">
+                <input id="share-url" type="text" readonly value="${escapeHtml(url)}" class="input min-w-0 flex-1 text-xs">
+                <button id="share-copy" type="button" class="btn btn-outline">Copy</button>
+                <button id="share-revoke" type="button" class="btn btn-destructive">Disable</button>
+              </div>`
+            : `<div class="mt-2 flex justify-end">
+                <button id="share-create" type="button" class="btn btn-primary">Create link</button>
+              </div>`
+        }
+        <div class="mt-4 flex justify-end">
+          <button id="share-close" type="button" class="btn btn-ghost">Close</button>
+        </div>
+      </div>
+    `);
+    $l("share-status").textContent = url === null
+      ? "Not shared yet — only you (and signed-in users) can see this note."
+      : "Sharing is ON — the link above is live and public.";
+    $l("share-close").addEventListener("click", closeDialog);
+    if (url === null) {
+      $l("share-create").addEventListener("click", async () => {
+        try {
+          const res = await api(`/api/notes/${note.id}/share`, { method: "POST" });
+          render(res.url);
+          toast("Share link created");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    } else {
+      $l("share-copy").addEventListener("click", async () => {
+        const ok = await copyText(url);
+        toast(ok ? "Link copied to clipboard" : "Copy failed — select the link manually", ok ? "success" : "error");
+      });
+      $l("share-revoke").addEventListener("click", async () => {
+        try {
+          await api(`/api/notes/${note.id}/share`, { method: "DELETE" });
+          render(null);
+          toast("Sharing disabled");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    }
+  };
+  api(`/api/notes/${note.id}/share`)
+    .then((r) => render(r.url))
+    .catch((err) => {
+      toast(err.message, "error");
+      closeDialog();
+    });
 }
 
 const SWATCH_COLORS = ["#ef4444", "#f97316", "#eab308", "#22c55e", "#14b8a6", "#3b82f6", "#8b5cf6", "#ec4899", "#78716c", "#18181b", "#ffffff"];
@@ -1846,6 +2177,11 @@ function initEditorToolbar() {
   $("#font-family").addEventListener("change", (e) => {
     if (e.target.value) exec("fontName", e.target.value);
     e.target.value = "";
+  });
+
+  // Show every font name in its own typeface so the list is easy to browse
+  $$("#font-family option").forEach((o) => {
+    if (o.value) o.style.fontFamily = `'${o.value}'`;
   });
 
   $("#font-size").addEventListener("change", (e) => {
@@ -1975,7 +2311,21 @@ function initEditorToolbar() {
     if (files.length) {
       e.preventDefault();
       uploadAndInsert(files);
+      return;
     }
+    const plain = e.clipboardData?.getData ? e.clipboardData.getData("text/plain") : "";
+    const html = e.clipboardData?.getData ? e.clipboardData.getData("text/html") : "";
+    if (!plain && !html) return;
+    e.preventDefault();
+    const hasRich = html && html !== "<meta charset='utf-8'>" && html !== '<meta charset="utf-8">';
+    saveSelection();
+    pendingPaste = { plain, html: hasRich ? html : "" };
+    let rect = null;
+    try {
+      const sel = window.getSelection();
+      if (sel.rangeCount) rect = sel.getRangeAt(0).getBoundingClientRect();
+    } catch (err) {}
+    showPasteMenu(rect, hasRich);
   });
   editor.addEventListener("dragover", (e) => e.preventDefault());
   editor.addEventListener("drop", (e) => {
@@ -2031,7 +2381,9 @@ function buildSwatchesOnce(containerId, cmd) {
 
 function syncToolbarState() {
   ["bold", "italic", "underline", "strikeThrough"].forEach((cmd) => {
-    $$('#view-notes [data-cmd="' + cmd + '"]').forEach((b) => b.classList.toggle("bg-accent", document.queryCommandState(cmd)));
+    const btns = $$("#editor-toolbar [data-cmd='" + cmd + "']");
+    const active = btns.length === 1 && document.queryCommandState(cmd);
+    btns.forEach((b) => b.classList.toggle("bg-accent", active));
   });
 }
 
@@ -2559,7 +2911,7 @@ function renderTodayTasks() {
     .map(
       (t) => `
       <div class="flex items-center gap-3 rounded-lg px-3 py-2 hover:bg-accent" data-task-row="${t.id}">
-        <button class="flex h-4.5 w-4.5 h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${t.done ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}" data-toggle="${t.id}">
+        <button class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${t.done ? "border-primary bg-primary text-primary-foreground" : "border-muted-foreground/40"}" data-toggle="${t.id}">
           ${t.done ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>` : ""}
         </button>
         <span class="min-w-0 flex-1 truncate text-sm ${t.done ? "line-through text-muted-foreground" : ""}">${escapeHtml(t.title)}</span>
@@ -3012,8 +3364,9 @@ function dayDialog(dateStr) {
                     <button class="flex h-[18px] w-[18px] shrink-0 items-center justify-center rounded border ${t.done ? "border-emerald-500 bg-emerald-500 text-white" : "border-muted-foreground/40 hover:border-primary"}" data-day-task-toggle="${t.id}">
                       ${t.done ? `<svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>` : ""}
                     </button>
-                    <span class="min-w-0 flex-1 truncate text-sm ${t.done ? "text-muted-foreground line-through" : ""}" data-day-open-task="${t.id}">${escapeHtml(t.title)}</span>
+                    <span class="min-w-0 flex-1 cursor-pointer truncate text-sm hover:text-primary ${t.done ? "text-muted-foreground line-through hover:line-through" : ""}" data-day-open-task="${t.id}" title="Open task">${escapeHtml(t.title)}</span>
                     ${priorityBadge(t.priority)}
+                    <button class="tool-btn hover:text-primary" data-day-task-edit="${t.id}" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/></svg></button>
                     <button class="tool-btn hover:text-destructive" data-day-task-del="${t.id}" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
                   </div>`
                 )
@@ -3094,6 +3447,23 @@ function dayDialog(dateStr) {
       });
     })
   );
+  $$("#dialog-root [data-day-task-edit]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const task = state.tasks.find((x) => x.id === Number(b.dataset.dayTaskEdit));
+      if (!task) return;
+      closeDialog();
+      taskDialog(task);
+    })
+  );
+  $$("#dialog-root [data-day-open-task]").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("[data-day-task-toggle], [data-day-task-edit], [data-day-task-del]")) return;
+      const task = state.tasks.find((x) => x.id === Number(el.dataset.dayOpenTask));
+      if (!task) return;
+      closeDialog();
+      taskDialog(task);
+    })
+  );
   $("#dialog-root [data-day-add-task]").addEventListener("click", () =>
     taskDialog(null, dateStr)
   );
@@ -3116,6 +3486,286 @@ function dayDialog(dateStr) {
       if (state.calY === new Date().getFullYear() && state.calM === new Date().getMonth()) renderCalendar();
     })
   );
+}
+
+// ---------- Smart paste menu (Only text / With formatting) ----------
+let pendingPaste = null;
+
+function insertPlain(plain) {
+  restoreSelection();
+  let ok = false;
+  try { ok = document.execCommand("insertText", false, plain); } catch (err) { ok = false; }
+  if (!ok) {
+    const esc = plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, "<br>");
+    document.execCommand("insertHTML", false, esc);
+  }
+  markDirty();
+  syncToolbarState();
+}
+
+function pastePlain() {
+  const t = pendingPaste ? pendingPaste.plain : "";
+  pendingPaste = null;
+  if (t) insertPlain(t);
+}
+
+function pasteFormatted() {
+  const p = pendingPaste || { html: "", plain: "" };
+  pendingPaste = null;
+  restoreSelection();
+  if (p.html) {
+    try {
+      document.execCommand("insertHTML", false, p.html);
+      markDirty();
+      syncToolbarState();
+      return;
+    } catch (err) {}
+  }
+  if (p.plain) insertPlain(p.plain);
+}
+
+function onPasteMenuDocDown(e) {
+  if (e.target && e.target.closest && e.target.closest("#paste-menu")) return;
+  hidePasteMenu();
+}
+
+function onPasteMenuKey(e) {
+  if (e.key === "Escape") { e.preventDefault(); hidePasteMenu(); }
+}
+
+function hidePasteMenu() {
+  const menu = $("#paste-menu");
+  if (!menu) return;
+  menu.remove();
+  document.removeEventListener("mousedown", onPasteMenuDocDown, true);
+  document.removeEventListener("keydown", onPasteMenuKey);
+  window.removeEventListener("resize", onPasteMenuDocDown);
+  window.removeEventListener("scroll", hidePasteMenu, true);
+}
+
+function showPasteMenu(rectAtPaste, richAvailable) {
+  hidePasteMenu();
+  const menu = document.createElement("div");
+  menu.id = "paste-menu";
+  menu.className = "fixed z-[95] w-56 overflow-hidden rounded-xl border border-border bg-card text-card-foreground shadow-xl";
+  const mk = (label, hint, onPick, disabled) => {
+    const b = document.createElement("button");
+    b.type = "button";
+    b.className = "flex w-full items-center justify-between gap-2 px-3 py-2 text-left text-xs" + (disabled ? " cursor-not-allowed opacity-50" : " hover:bg-accent");
+    const s = document.createElement("span");
+    s.className = "font-medium";
+    s.textContent = label;
+    b.appendChild(s);
+    if (hint) {
+      const h = document.createElement("span");
+      h.className = "text-[10px] text-muted-foreground";
+      h.textContent = hint;
+      b.appendChild(h);
+    }
+    b.addEventListener("click", (ev) => {
+      if (disabled) return;
+      ev.stopPropagation();
+      hidePasteMenu();
+      onPick();
+    });
+    return b;
+  };
+  const header = document.createElement("div");
+  header.className = "border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground";
+  header.textContent = "Paste as";
+  menu.appendChild(header);
+  menu.appendChild(mk("Only text", "Note style", pastePlain));
+  menu.appendChild(mk("With formatting", "Keep colors", pasteFormatted, !richAvailable));
+  const sep = document.createElement("div");
+  sep.className = "mx-2 border-t border-border/70";
+  menu.appendChild(sep);
+  menu.appendChild(mk("Cancel", "", () => { pendingPaste = null; }));
+  document.body.appendChild(menu);
+
+  let left = 12, top = 12;
+  if (rectAtPaste) {
+    left = rectAtPaste.left;
+    top = rectAtPaste.bottom + 6;
+  }
+  left = Math.max(8, Math.min(left, window.innerWidth - menu.offsetWidth - 8));
+  top = Math.max(8, Math.min(top, window.innerHeight - menu.offsetHeight - 8));
+  menu.style.left = left + "px";
+  menu.style.top = top + "px";
+
+  document.addEventListener("mousedown", onPasteMenuDocDown, true);
+  document.addEventListener("keydown", onPasteMenuKey);
+  window.addEventListener("resize", onPasteMenuDocDown);
+  window.addEventListener("scroll", hidePasteMenu, true);
+}
+
+// ---------- Web portals (local favourites for daily-use sites) ----------
+const PORTALS_KEY = "pa_web_portals";
+
+function getPortals() {
+  try {
+    const raw = localStorage.getItem(PORTALS_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch (err) {
+    return [];
+  }
+}
+
+function savePortals(list) {
+  localStorage.setItem(PORTALS_KEY, JSON.stringify(list));
+}
+
+function normalUrl(url) {
+  let u = (url || "").trim();
+  if (!u) return "";
+  if (!/^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(u)) u = "https://" + u;
+  return u;
+}
+
+function hostOf(url) {
+  try {
+    return new URL(normalUrl(url)).hostname.replace(/^www\./, "");
+  } catch (err) {
+    return "";
+  }
+}
+
+function portalAvatarStyle(name) {
+  const colors = ["#f43f5e", "#f97316", "#f59e0b", "#84cc16", "#10b981", "#06b6d4", "#3b82f6", "#8b5cf6", "#d946ef", "#ec4899"];
+  let h = 0;
+  for (const ch of name) h = (h * 31 + ch.charCodeAt(0)) >>> 0;
+  return colors[h % colors.length];
+}
+
+function renderPortals() {
+  const grid = $("#portals-grid");
+  const list = getPortals();
+  $("#portals-count-badge").textContent = list.length;
+  if (!list.length) {
+    grid.innerHTML = `
+      <div class="col-span-full flex flex-col items-center justify-center gap-3 py-14 text-center text-sm text-muted-foreground">
+        <svg xmlns="http://www.w3.org/2000/svg" width="28" height="28" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+        <p>No portals yet — add your first one.</p>
+      </div>`;
+    return;
+  }
+  grid.innerHTML = list
+    .map(
+      (p, i) => `
+      <div class="group relative cursor-pointer rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:shadow-md" data-open-portal="${i}">
+        <div class="flex items-center gap-3">
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white" style="background:${portalAvatarStyle(p.name || "?")}">${escapeHtml((p.name || "?")[0].toUpperCase())}</span>
+          <div class="min-w-0">
+            <p class="truncate text-sm font-semibold">${escapeHtml(p.name)}</p>
+            <p class="truncate text-xs text-muted-foreground">${escapeHtml(hostOf(p.url))}</p>
+          </div>
+        </div>
+        <p class="mt-2 inline-flex">
+          ${
+            p.type === "sheet"
+              ? `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><path d="M3 9h18"/><path d="M9 21V9"/></svg>
+                  Google Sheet
+                </span>`
+              : `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+                  Website
+                </span>`
+          }
+        </p>
+        ${
+          (p.notes || "").trim()
+            ? `<p class="mt-2 flex items-center gap-1.5 truncate text-xs text-muted-foreground">
+                <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="shrink-0"><path d="M4 19.5v-15A2.5 2.5 0 0 1 6.5 2H20v20H6.5a2.5 2.5 0 0 1 0-5H20"/><path d="M8 7h8"/><path d="M8 11h6"/></svg>
+                <span>${escapeHtml(p.notes)}</span>
+              </p>`
+            : ""
+        }
+        <div class="absolute right-2 top-2 hidden gap-1 group-hover:flex">
+          <button type="button" class="btn btn-ghost btn-icon" data-edit-portal="${i}" title="Edit">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </button>
+          <button type="button" class="btn btn-ghost btn-icon hover:text-destructive" data-del-portal="${i}" title="Remove">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          </button>
+        </div>
+      </div>`
+    )
+    .join("");
+  grid.querySelectorAll("[data-open-portal]").forEach((el) =>
+    el.addEventListener("click", (e) => {
+      if (e.target.closest("[data-edit-portal], [data-del-portal]")) return;
+      const p = getPortals()[Number(el.dataset.openPortal)];
+      const url = p && normalUrl(p.url);
+      if (url) window.open(url, "_blank", "noopener");
+    })
+  );
+  grid.querySelectorAll("[data-edit-portal]").forEach((b) => b.addEventListener("click", () => portalDialog(Number(b.dataset.editPortal))));
+  grid.querySelectorAll("[data-del-portal]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const list = getPortals();
+      const p = list[Number(b.dataset.delPortal)];
+      if (!p) return;
+      confirmDialog(`Remove "${p.name}"?`, () => {
+        savePortals(getPortals().filter((_, j) => j !== Number(b.dataset.delPortal)));
+        renderPortals();
+      });
+    })
+  );
+}
+
+function portalDialog(idx) {
+  const list = getPortals();
+  const editing = idx != null && list[idx];
+  const src = editing || { name: "", url: "", notes: "", type: "web" };
+  const typeOpt = (val, label) => `<option value="${val}"${src.type === val ? " selected" : ""}>${label}</option>`;
+  openDialog(`
+    <div class="flex items-start gap-3">
+      <div class="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M12 2a14.5 14.5 0 0 0 0 20 14.5 14.5 0 0 0 0-20"/><path d="M2 12h20"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-semibold">${editing ? "Edit portal" : "Add portal"}</h3>
+        <p class="mt-0.5 text-sm text-muted-foreground">Give it a name and paste the website or Google Sheet address.</p>
+      </div>
+    </div>
+    <form id="portal-form" class="mt-4 space-y-3">
+      <input id="portal-name" required type="text" maxlength="40" placeholder="Portal name (e.g. Gmail)" class="input w-full" value="${escapeHtml(src.name)}">
+      <select id="portal-type" class="input w-full" title="Portal type">
+        ${typeOpt("web", "Website")}
+        ${typeOpt("sheet", "Google Sheet")}
+      </select>
+      <input id="portal-url" required type="text" placeholder="https://example.com" class="input w-full" value="${escapeHtml(src.url)}">
+      <textarea id="portal-notes" maxlength="200" rows="2" placeholder="Additional notes (optional)" class="input w-full resize-none">${escapeHtml(src.notes || "")}</textarea>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-outline" data-cancel-dialog>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  `);
+  $("#portal-form [data-cancel-dialog]").addEventListener("click", closeDialog);
+  $("#portal-form").addEventListener("submit", (e) => {
+    e.preventDefault();
+    const name = $("#portal-name").value.trim();
+    const url = normalUrl($("#portal-url").value);
+    const notes = $("#portal-notes").value.trim();
+    const type = $("#portal-type").value;
+    if (!name || !url) return;
+    if (editing) list[idx] = { name, url, notes, type };
+    else list.push({ name, url, notes, type });
+    savePortals(list);
+    renderPortals();
+    closeDialog();
+  });
+  setTimeout(() => $("#portal-name").focus(), 0);
+}
+
+function initPortals() {
+  $("#portals-add-btn").addEventListener("click", () => portalDialog(null));
+}
+
+function loadPortals() {
+  renderPortals();
 }
 
 function initApp() {
@@ -3163,7 +3813,7 @@ function initApp() {
   );
   $("#tasks-add-btn").addEventListener("click", () => taskDialog());
   $("#sched-add-btn").addEventListener("click", () => routineDialog());
-  $("#sched-add-btn").addEventListener("click", () => {});
+  initPortals();
   $("#notes-add-btn").addEventListener("click", () => openEditor(null));
   $("#pages-add-btn").addEventListener("click", () => pageCreateDialog());
 
@@ -3367,12 +4017,32 @@ function initApp() {
     const doImport = async () => {
       status.textContent = "Importing...";
       try {
+        // Strip/restore the browser-local "web_portals" part into localStorage,
+        // the rest of the file goes to the server.
+        let payload;
+        let hadPortals = false;
+        try {
+          payload = JSON.parse(await file.text());
+        } catch (err) {
+          throw new Error("Invalid JSON backup file");
+        }
+        const holder = payload && payload.data && typeof payload.data === "object" ? payload.data : payload;
+        if (holder && typeof holder === "object") {
+          if (Array.isArray(holder.web_portals)) {
+            hadPortals = true;
+            savePortals(holder.web_portals.filter((p) => p && (p.name || "").trim()));
+            delete holder.web_portals;
+          }
+        } else {
+          throw new Error("Unexpected backup structure");
+        }
         const fd = new FormData();
-        fd.append("file", file);
+        fd.append("file", new File([JSON.stringify(payload)], file.name, { type: "application/json" }));
         fd.append("mode", mode);
         const res = await api("/api/import", { method: "POST", body: fd });
         status.textContent = `Done — imported ${res.imported}, skipped ${res.skipped}`;
-        toast(`Backup restored (${mode})`);
+        toast(`Backup restored (${mode})${hadPortals ? ", portals included" : ""}`);
+        if (state.view === "webportals") renderPortals();
         await loadAll();
       } catch (e) {
         status.textContent = "";
@@ -3391,6 +4061,37 @@ function initApp() {
       await loadAll();
       loadDashboard();
     }, "Reset");
+  });
+
+  // Export JSON = server data + browser-local web portals in one file
+  $("#export-json-btn").addEventListener("click", async (e) => {
+    e.preventDefault();
+    const btn = $("#export-json-btn");
+    const orig = btn.innerHTML;
+    btn.innerHTML = "Preparing…";
+    btn.classList.add("opacity-60", "pointer-events-none");
+    try {
+      if (!navigator.onLine) throw new Error("Offline — cannot fetch server data");
+      const res = await fetch("/api/export/json");
+      if (!res.ok) throw new Error("Export failed");
+      const payload = JSON.parse(await res.text());
+      if (payload && payload.data && typeof payload.data === "object") payload.data.web_portals = getPortals();
+      else if (payload && typeof payload === "object") payload.web_portals = getPortals();
+      const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
+      const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `assistant-backup-${stamp}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(a.href);
+    } catch (err) {
+      toast(err.message || "Export failed", "error");
+    } finally {
+      btn.innerHTML = orig;
+      btn.classList.remove("opacity-60", "pointer-events-none");
+    }
   });
 
   initEditorToolbar();
@@ -3829,7 +4530,7 @@ function initApp() {
 
   const initialHash = location.hash;
   const bootSegs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  const BOOT_VIEWS = ["tasks", "notes", "pages", "schedule", "calendar", "settings"];
+  const BOOT_VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
   const viewerLocked = state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings"].includes(bootSegs[0]);
   if (bootSegs.length && BOOT_VIEWS.includes(bootSegs[0]) && !viewerLocked) {
     // Deep-link boot: show the target shell instantly so dashboard never flashes
@@ -3842,7 +4543,7 @@ function initApp() {
     .then(() => {
       const segs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
       const v = segs[0];
-      const VIEWS = ["tasks", "notes", "pages", "schedule", "calendar", "settings"];
+      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
       if (v === "pages") {
         const pid = Number(segs[1]);
         if (segs[1] && state.pages.some((p) => p.id === pid)) showPageDetail(pid);

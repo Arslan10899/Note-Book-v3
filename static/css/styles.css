@@ -198,6 +198,48 @@ body {
   box-shadow: 0 0 0 3px hsl(var(--ring) / .15);
 }
 
+/* Selects styled with .input: keep the native dropdown list readable in both themes */
+.input {
+  color-scheme: light;
+}
+.dark .input {
+  color-scheme: dark;
+}
+.input option,
+.input optgroup {
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+}
+
+/* Catch-all: every native dropdown & picker stays readable in both themes */
+.toolbar-select {
+  color-scheme: light;
+}
+.dark .toolbar-select {
+  color-scheme: dark;
+}
+select option,
+select optgroup {
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+}
+input[type="date"],
+input[type="time"],
+input[type="month"],
+input[type="week"],
+input[type="datetime-local"],
+input[type="color"] {
+  color-scheme: light;
+}
+.dark input[type="date"],
+.dark input[type="time"],
+.dark input[type="month"],
+.dark input[type="week"],
+.dark input[type="datetime-local"],
+.dark input[type="color"] {
+  color-scheme: dark;
+}
+
 .badge {
   display: inline-flex;
   align-items: center;
@@ -441,17 +483,20 @@ body {
   text-align: left;
 }
 
-.note-editor ul[data-task] {
+.note-editor ul[data-task],
+.viewer-body ul[data-task] {
   list-style: none;
   padding-left: 4px;
 }
 
-.note-editor ul[data-task] li {
+.note-editor ul[data-task] li,
+.viewer-body ul[data-task] li {
   position: relative;
   padding-left: 28px;
 }
 
-.note-editor ul[data-task="1"] li::before {
+.note-editor ul[data-task="1"] li::before,
+.viewer-body ul[data-task="1"] li::before {
   content: "";
   position: absolute;
   left: 0;
@@ -462,7 +507,8 @@ body {
   border: 1.5px solid hsl(var(--muted-foreground) / .8);
 }
 
-.note-editor ul[data-task="2"] li::before {
+.note-editor ul[data-task="2"] li::before,
+.viewer-body ul[data-task="2"] li::before {
   content: "";
   position: absolute;
   left: 0;
@@ -474,7 +520,8 @@ body {
   border: 1.5px solid hsl(var(--primary));
 }
 
-.note-editor ul[data-task="2"] li::after {
+.note-editor ul[data-task="2"] li::after,
+.viewer-body ul[data-task="2"] li::after {
   content: "";
   position: absolute;
   left: 4px;
@@ -961,6 +1008,13 @@ body {
   color: hsl(var(--primary));
   background: hsl(var(--primary) / .12);
 }
+.role-badge.manager {
+  color: hsl(25 95% 45%);
+  background: hsl(25 95% 50% / .16);
+}
+.dark .role-badge.manager {
+  color: hsl(25 95% 60%);
+}
 
 /* Holiday badges (shadcn-style, subtle) */
 .cal-hol {
@@ -1152,4 +1206,136 @@ body.sidebar-open #sidebar-overlay {
 @media print {
   #sidebar, header, .toast-container { display: none !important; }
   .md\:ml-60 { margin-left: 0 !important; }
+}
+
+/* ---------- Note reader (3-column professional layout) ---------- */
+#note-reader {
+  display: flex;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+#note-reader .nr-aside {
+  width: 248px;
+  flex-shrink: 0;
+  position: sticky;
+  top: 1rem;
+  max-height: calc(100vh - 2rem);
+  overflow-y: auto;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: var(--radius);
+}
+
+/* Focus (reading) mode: centered, distraction-free, wider type */
+#note-reader.nr-focus #viewer-main-card {
+  max-width: 46rem;
+  margin: 0 auto;
+  flex: 1 1 100%;
+}
+#note-reader.nr-focus .nr-aside {
+  display: none;
+}
+
+/* Related mode: left panel only */
+#note-reader.nr-related #detail-panel {
+  display: none;
+}
+
+/* Detail mode: both side panels */
+#note-reader.nr-detail #related-panel {
+  width: 236px;
+}
+
+.viewer-body {
+  font-size: 1.02rem;
+  line-height: 1.75;
+}
+
+.viewer-body h1 { font-size: 1.85rem; }
+.viewer-body h2 { font-size: 1.5rem; }
+.viewer-body h3 { font-size: 1.25rem; }
+.viewer-body h1, .viewer-body h2, .viewer-body h3 { margin: 1.25em 0 0.5em; font-weight: 700; }
+
+/* Segmented control for the reader layout modes */
+.seg {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9px;
+  background: hsl(var(--muted));
+  border: 1px solid hsl(var(--border));
+}
+.seg button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 26px;
+  border: 0;
+  border-radius: 7px;
+  background: transparent;
+  color: hsl(var(--muted-foreground));
+  cursor: pointer;
+}
+.seg button:hover { color: hsl(var(--foreground)); }
+.seg button.active {
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.08);
+}
+
+/* Related/detail panels: internal sections */
+.nr-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 10px 12px;
+  border-bottom: 1px solid hsl(var(--border));
+}
+.nr-panel-title {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: hsl(var(--muted-foreground));
+}
+.nr-rel-item {
+  display: block;
+  width: 100%;
+  padding: 8px 10px;
+  text-align: left;
+  border-radius: 9px;
+  background: transparent;
+  border: 0;
+  cursor: pointer;
+  color: inherit;
+}
+.nr-rel-item:hover { background: hsl(var(--accent)); }
+.nr-rel-item.active { background: hsl(var(--accent)); }
+.nr-rel-title {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-size: 13px;
+  font-weight: 600;
+}
+.nr-rel-snippet {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  margin-top: 2px;
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+}
+.nr-rel-tags { margin-top: 3px; }
+.nr-rel-tags .badge { margin-right: 3px; }
+
+@media (max-width: 860px) {
+  #note-reader { flex-direction: column; }
+  #note-reader .nr-aside { width: 100%; position: static; max-height: none; }
+  #note-reader.nr-focus #viewer-main-card { max-width: none; }
 }

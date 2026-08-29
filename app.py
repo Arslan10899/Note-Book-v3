@@ -1,4 +1,6 @@
+import html
 import json
+import logging
 import os
 import re
 import secrets
@@ -6,6 +8,8 @@ import sqlite3
 import tempfile
 import time
 import uuid
+from html.parser import HTMLParser
+from collections import defaultdict
 from datetime import date, datetime, timedelta, timezone
 from functools import wraps
 from io import BytesIO
@@ -15,9 +19,13 @@ from flask import Flask, jsonify, render_template, request, send_file, send_from
 from PIL import Image
 from werkzeug.security import check_password_hash, generate_password_hash
 
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+logger = logging.getLogger("assistant")
+
 BASE_DIR = Path(__file__).parent
-DB_PATH = BASE_DIR / "assistant.db"
-UPLOAD_DIR = BASE_DIR / "uploads"
+# Overridable via env so tests (and multiple instances) never touch real data
+DB_PATH = Path(os.environ.get("ASSISTANT_DB", str(BASE_DIR / "assistant.db")))
+UPLOAD_DIR = Path(os.environ.get("ASSISTANT_UPLOADS", str(BASE_DIR / "uploads")))
 UPLOAD_DIR.mkdir(exist_ok=True)
 PRIORITIES = {"low", "medium", "high"}
 MAX_UPLOAD_SIZE = 5 * 1024 * 1024
@@ -30,12 +38,41 @@ if not _SECRET_FILE.exists():
     _SECRET_FILE.write_text(secrets.token_hex(32))
 app.secret_key = _SECRET_FILE.read_text().strip()
 app.config["PERMANENT_SESSION_LIFETIME"] = timedelta(days=30)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+# Lax blocks cross-site cookies on POST/PUT/DELETE (a solid CSRF mitigation)
+app.config["SESSION_COOKIE_SAMESITE"] = "Lax"
+# Enable behind HTTPS with: COOKIE_SECURE=1
+app.config["SESSION_COOKIE_SECURE"] = os.environ.get("COOKIE_SECURE") == "1"
 
 
 @app.after_request
 def no_cache_html(response):
     if response.content_type.startswith("text/html"):
         response.headers["Cache-Control"] = "no-cache"
+    return response
+
+
+@app.after_request
+def apply_security_headers(response):
+    response.headers.setdefault("X-Content-Type-Options", "nosniff")
+    response.headers.setdefault("X-Frame-Options", "SAMEORIGIN")
+    response.headers.setdefault("Referrer-Policy", "same-origin")
+    response.headers.setdefault(
+        "Content-Security-Policy",
+        "default-src 'self'; "
+        "script-src 'self' 'unsafe-inline'; "
+        "style-src 'self' 'unsafe-inline' https://fonts.googleapis.com; "
+        "font-src https://fonts.gstatic.com; "
+        "img-src 'self' data:; "
+        "connect-src 'self'; "
+        "frame-ancestors 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'",
+    )
+    if request.path.startswith("/api/"):
+        response.headers["Cache-Control"] = "no-store"
+    if request.path.startswith("/s/"):
+        response.headers["X-Robots-Tag"] = "noindex, nofollow"
     return response
 
 
@@ -56,12 +93,150 @@ def now_stamp():
     return datetime.now(timezone.utc).strftime("%Y-%m-%d %H:%M:%S")
 
 
-def sanitize_html(html):
-    html = re.sub(r"<script[\s\S]*?</script>", "", html, flags=re.I)
-    html = re.sub(r"<style[\s\S]*?</style>", "", html, flags=re.I)
-    html = re.sub(r"\son\w+\s*=\s*(\"[^\"]*\"|'[^']*'|[^\s>]+)", "", html, flags=re.I)
-    html = re.sub(r"javascript\s*:", "", html, flags=re.I)
-    return html.strip()
+# ================= HTML sanitizer (whitelist-based) =================
+# Notes/pages are rich text rendered with innerHTML, so we only ever emit a
+# strict whitelist of tags/attributes. html.parser decodes ALL character
+# references (e.g. &#60;script&#62; -> <script>), which closes the entity-
+# encoding bypass that plagues regex-only sanitizers.
+
+SANITIZE_ALLOWED_TAGS = {
+    "p", "br", "b", "strong", "i", "em", "u", "s", "strike",
+    "h1", "h2", "h3", "h4", "h5", "h6",
+    "ul", "ol", "li", "a", "img", "table", "thead", "tbody", "tr", "td", "th",
+    "colgroup", "col", "code", "pre", "blockquote", "span", "div", "sub", "sup", "hr",
+}
+# Tags we drop together with their entire subtree content
+SANITIZE_DROP_TAGS = {
+    "script", "style", "iframe", "frame", "frameset", "object", "embed", "applet",
+    "form", "input", "textarea", "select", "button", "noscript", "template",
+    "svg", "math", "video", "audio", "source", "track", "base", "meta", "link",
+    "title", "marquee", "dialog", "canvas", "portal",
+}
+SANITIZE_ALLOWED_ATTRS = {
+    "a": {"href", "target", "rel"},
+    "img": {"src", "alt", "width", "height", "loading", "style"},
+    "span": {"style"},
+    "div": {"style"},
+    "ul": {"data-task"},
+    "td": {"style"},
+    "th": {"style"},
+    "table": {"style"},
+    "col": {"style", "span"},
+    "colgroup": {"style"},
+}
+VOID_ELEMENTS = {"br", "img", "hr", "col"}
+
+
+def _safe_url(value, image=False):
+    v = (value or "").strip()
+    # whitespace-insensitive scheme block (defeats java\tscript:/java\nscript:)
+    compact = re.sub(r"\s+", "", v.lower())
+    if compact.startswith(("javascript:", "vbscript:", "data:", "file:")):
+        return None
+    low = v.lower()
+    if image:
+        if low.startswith("/") or low.startswith("http://") or low.startswith("https://"):
+            return value
+        return None
+    if low.startswith(("#", "/", "http://", "https://", "mailto:", "tel:")):
+        return value
+    return None
+
+
+def _safe_style(value):
+    v = re.sub(r"url\s*\(\s*['\"]?[^)'\"]*['\"]?\s*\)", "", value or "", flags=re.I)
+    v = re.sub(r"expression\s*\(", "blocked(", v, flags=re.I)
+    if re.search(r"(?i)javascript\s*:|vbscript\s*:|data\s*:|\bbehavior\s*:|@import", v):
+        return None
+    return v
+
+
+class _SanitizeParser(HTMLParser):
+    def __init__(self):
+        super().__init__(convert_charrefs=True)
+        self.parts = []
+        self.skip = 0  # depth of blocked (dangerous) subtree
+
+    def handle_starttag(self, tag, attrs):
+        tag = tag.lower()
+        if self.skip:
+            if tag not in VOID_ELEMENTS:
+                self.skip += 1
+            return
+        if tag in SANITIZE_DROP_TAGS:
+            self.skip = 1
+            return
+        if tag not in SANITIZE_ALLOWED_TAGS:
+            return  # drop the tag, keep its text (escaped later)
+        allowed = SANITIZE_ALLOWED_ATTRS.get(tag, ())
+        out = []
+        for k, val in attrs:
+            k = k.lower()
+            if k not in allowed:
+                continue
+            if k == "href":
+                safe = _safe_url(val)
+                if safe is None:
+                    continue
+                val = safe
+            elif k == "src":
+                safe = _safe_url(val, image=True)
+                if safe is None:
+                    continue
+                val = safe
+                if tag == "img":
+                    val = re.sub(r"^//", "https://", val)
+            elif k == "rel" and tag == "a":
+                val = " ".join(w for w in val.split() if w in ("noopener", "noreferrer", "nofollow"))
+            elif k == "style":
+                val = _safe_style(val)
+                if val is None:
+                    continue
+            val = html.escape(val.strip(), quote=True)
+            out.append(f' {k}="{val}"')
+        self.parts.append(f"<{tag}{''.join(out)}>")
+
+    def handle_startendtag(self, tag, attrs):
+        # self-closing form of an allowed tag, or a blocked one: just treat as start
+        tag = tag.lower()
+        if self.skip:
+            return
+        if tag in SANITIZE_ALLOWED_TAGS:
+            self.handle_starttag(tag, attrs)
+
+    def handle_endtag(self, tag):
+        tag = tag.lower()
+        if self.skip:
+            if tag not in VOID_ELEMENTS:
+                self.skip -= 1
+            return
+        if tag in SANITIZE_ALLOWED_TAGS and tag not in VOID_ELEMENTS:
+            self.parts.append(f"</{tag}>")
+
+    def handle_data(self, data):
+        if not self.skip:
+            self.parts.append(html.escape(data, quote=False))
+
+    def handle_comment(self, data):
+        pass  # comments never survive
+
+    def handle_decl(self, decl):
+        pass  # no DOCTYPE
+
+    def handle_pi(self, data):
+        pass
+
+
+def sanitize_html(value):
+    if not value:
+        return ""
+    parser = _SanitizeParser()
+    try:
+        parser.feed(str(value))
+        parser.close()
+    except Exception:
+        return ""
+    return "".join(parser.parts).strip()
 
 
 def clean_tags(raw):
@@ -148,6 +323,20 @@ CREATE TABLE IF NOT EXISTS users (
     role TEXT NOT NULL DEFAULT 'user',
     created_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS note_shares (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    token TEXT UNIQUE NOT NULL,
+    note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+    created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_tasks_page_id ON tasks(page_id);
+CREATE INDEX IF NOT EXISTS idx_notes_page_id ON notes(page_id);
+CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
+CREATE INDEX IF NOT EXISTS idx_note_versions_note_id ON note_versions(note_id);
+CREATE INDEX IF NOT EXISTS idx_routine_completions_routine_id ON routine_completions(routine_id);
+CREATE INDEX IF NOT EXISTS idx_routine_completions_date ON routine_completions(completed_date);
+CREATE INDEX IF NOT EXISTS idx_note_shares_token ON note_shares(token);
+CREATE INDEX IF NOT EXISTS idx_note_shares_note_id ON note_shares(note_id);
 """
 
 
@@ -163,6 +352,24 @@ def migrate_db():
         page_cols = [r[1] for r in conn.execute("PRAGMA table_info(pages)").fetchall()]
         if "icon" not in page_cols:
             conn.execute("ALTER TABLE pages ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_tasks_page_id ON tasks(page_id);
+            CREATE INDEX IF NOT EXISTS idx_notes_page_id ON notes(page_id);
+            CREATE INDEX IF NOT EXISTS idx_notes_updated_at ON notes(updated_at);
+            CREATE INDEX IF NOT EXISTS idx_note_versions_note_id ON note_versions(note_id);
+            CREATE INDEX IF NOT EXISTS idx_routine_completions_routine_id ON routine_completions(routine_id);
+            CREATE INDEX IF NOT EXISTS idx_routine_completions_date ON routine_completions(completed_date);
+            CREATE TABLE IF NOT EXISTS note_shares (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                token TEXT UNIQUE NOT NULL,
+                note_id INTEGER NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+                created_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_note_shares_token ON note_shares(token);
+            CREATE INDEX IF NOT EXISTS idx_note_shares_note_id ON note_shares(note_id);
+            """
+        )
         conn.commit()
     finally:
         conn.close()
@@ -206,6 +413,9 @@ def auth_guard():
         p.startswith("/api/auth/")
         or p.startswith("/static")
         or (request.method == "GET" and p == "/")
+        or (request.method == "GET" and p.startswith("/s/"))
+        # Images referenced from public share pages must load without a session
+        or (request.method == "GET" and p.startswith("/uploads/"))
     ):
         return None
     if not session.get("uid"):
@@ -249,15 +459,51 @@ can_write = role_required(WRITE_ROLES)      # add / edit data
 admin_only = role_required(("admin",))      # delete & destructive ops
 
 
+# ---------------- Brute-force throttling (in-memory, per IP) ----------------
+
+_failed_attempts = defaultdict(list)
+AUTH_WINDOW_SEC = 300
+AUTH_MAX_ATTEMPTS = 5
+REGISTER_WINDOW_SEC = 300
+REGISTER_MAX_ATTEMPTS = 10
+
+
+def _authed_key(kind):
+    return "%s|%s" % (kind, request.remote_addr or "0.0.0.0")
+
+
+def _check_throttle(kind, limit, window):
+    key = _authed_key(kind)
+    now = time.time()
+    _failed_attempts[key] = [t for t in _failed_attempts[key] if now - t < window]
+    if len(_failed_attempts[key]) >= limit:
+        retry = int(window - (now - _failed_attempts[key][0]))
+        return max(retry, 1)
+    return None
+
+
+def _record_failure(kind):
+    _failed_attempts[_authed_key(kind)].append(time.time())
+
+
+def _reset_throttle(kind):
+    _failed_attempts.pop(_authed_key(kind), None)
+
+
 @app.post("/api/auth/register")
 def auth_register():
+    retry = _check_throttle("register", REGISTER_MAX_ATTEMPTS, REGISTER_WINDOW_SEC)
+    if retry:
+        return jsonify({"error": f"Too many registration attempts. Please wait {retry}s."}), 429
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip().lower()
     password = str(data.get("password") or "")
     display_name = (data.get("display_name") or "").strip()[:60]
     if not re.fullmatch(r"[a-z0-9_.]{3,24}", username):
+        _record_failure("register")
         return jsonify({"error": "Username: 3-24 chars, letters/numbers/._ only"}), 400
     if len(password) < 6:
+        _record_failure("register")
         return jsonify({"error": "Password must be at least 6 characters"}), 400
     conn = get_db()
     try:
@@ -270,17 +516,23 @@ def auth_register():
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
     except sqlite3.IntegrityError:
+        _record_failure("register")
         return jsonify({"error": "Username already taken"}), 400
     finally:
         conn.close()
+    _reset_throttle("register")
     session.clear()
     session["uid"] = row["id"]
     session.permanent = True
+    logger.info("user registered: id=%s username=%s role=%s", row["id"], row["username"], row["role"])
     return jsonify(public_user(row)), 201
 
 
 @app.post("/api/auth/login")
 def auth_login():
+    retry = _check_throttle("login", AUTH_MAX_ATTEMPTS, AUTH_WINDOW_SEC)
+    if retry:
+        return jsonify({"error": f"Too many failed attempts. Please wait {retry}s."}), 429
     data = request.get_json(silent=True) or {}
     username = (data.get("username") or "").strip().lower()
     password = str(data.get("password") or "")
@@ -290,10 +542,14 @@ def auth_login():
     finally:
         conn.close()
     if not row or not check_password_hash(row["password_hash"], password):
+        _record_failure("login")
+        logger.warning("failed login attempt for username=%s from %s", username, request.remote_addr)
         return jsonify({"error": "Invalid username or password"}), 401
+    _reset_throttle("login")
     session.clear()
     session["uid"] = row["id"]
     session.permanent = True
+    logger.info("user logged in: id=%s username=%s", row["id"], row["username"])
     return jsonify(public_user(row))
 
 
@@ -373,7 +629,7 @@ def auth_update_user(user_id):
     data = request.get_json(silent=True) or {}
     role = data.get("role")
     if role not in ("admin", "manager", "user"):
-        return jsonify({"error": "Role must be admin or user"}), 400
+        return jsonify({"error": "Role must be admin, manager or user"}), 400
     me = current_user()
     if me["id"] == user_id and role != "admin":
         return jsonify({"error": "You cannot remove your own admin role"}), 400
@@ -529,7 +785,9 @@ def list_notes():
         "SELECT id, title, content, pinned, tags, created_at, updated_at, page_id FROM notes ORDER BY pinned DESC, updated_at DESC"
     ).fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    # Re-sanitize on read so legacy rows written by the old regex sanitizer can
+    # never inject entity-encoded markup into the client.
+    return jsonify([{**dict(r), "content": sanitize_html(r["content"])} for r in rows])
 
 
 @app.post("/api/notes")
@@ -623,7 +881,7 @@ def get_version(note_id, version_id):
     conn.close()
     if row is None:
         return jsonify({"error": "Version not found"}), 404
-    return jsonify(dict(row))
+    return jsonify({**dict(row), "content": sanitize_html(row["content"])})
 
 
 @app.post("/api/notes/<int:note_id>/restore")
@@ -679,6 +937,87 @@ def delete_note(note_id):
     return jsonify({"ok": True})
 
 
+# ---------------- Note sharing (public read-only link) ----------------
+
+def share_url_for(token):
+    return request.url_root.rstrip("/") + "/s/" + token
+
+
+@app.get("/api/notes/<int:note_id>/share")
+def get_note_share(note_id):
+    conn = get_db()
+    try:
+        exists = conn.execute("SELECT 1 FROM notes WHERE id = ?", (note_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "Note not found"}), 404
+        row = conn.execute("SELECT token FROM note_shares WHERE note_id = ?", (note_id,)).fetchone()
+    finally:
+        conn.close()
+    return jsonify({"note_id": note_id, "url": share_url_for(row["token"]) if row else None})
+
+
+@app.post("/api/notes/<int:note_id>/share")
+@can_write
+def create_note_share(note_id):
+    conn = get_db()
+    try:
+        exists = conn.execute("SELECT 1 FROM notes WHERE id = ?", (note_id,)).fetchone()
+        if not exists:
+            return jsonify({"error": "Note not found"}), 404
+        row = conn.execute("SELECT token FROM note_shares WHERE note_id = ?", (note_id,)).fetchone()
+        if row:
+            return jsonify({"note_id": note_id, "url": share_url_for(row["token"]), "created": False})
+        token = secrets.token_urlsafe(16)
+        conn.execute(
+            "INSERT INTO note_shares (token, note_id, created_at) VALUES (?, ?, ?)",
+            (token, note_id, now_stamp()),
+        )
+        conn.commit()
+    finally:
+        conn.close()
+    logger.info("share created for note id=%s by user id=%s", note_id, session.get("uid"))
+    return jsonify({"note_id": note_id, "url": share_url_for(token), "created": True}), 201
+
+
+@app.delete("/api/notes/<int:note_id>/share")
+@can_write
+def revoke_note_share(note_id):
+    conn = get_db()
+    conn.execute("DELETE FROM note_shares WHERE note_id = ?", (note_id,))
+    conn.commit()
+    conn.close()
+    logger.info("share revoked for note id=%s by user id=%s", note_id, session.get("uid"))
+    return jsonify({"ok": True})
+
+
+@app.get("/s/<token>")
+def public_share_page(token):
+    conn = get_db()
+    try:
+        row = conn.execute(
+            "SELECT n.* FROM notes n JOIN note_shares s ON s.note_id = n.id WHERE s.token = ?",
+            (token,),
+        ).fetchone()
+    finally:
+        conn.close()
+    if not row:
+        return render_template("share.html", missing=True, title="Shared note", meta="", content=""), 404
+    title = row["title"] or "Untitled"
+    # Re-sanitize on read for defense-in-depth (content is already sanitized on write)
+    content = sanitize_html(row["content"] or "")
+    tags = clean_tags(row["tags"])
+    meta = "Last updated " + (row["updated_at"] or "").strip()
+    return render_template(
+        "share.html",
+        missing=False,
+        title=title,
+        meta=meta,
+        content=content,
+        page_title="",
+        tags=tags,
+    )
+
+
 def gc_uploads():
     conn = get_db()
     blobs = [r["content"] for r in conn.execute("SELECT content FROM notes")]
@@ -709,6 +1048,7 @@ def gc_uploads():
 
 def compress_image(file_storage):
     img = Image.open(file_storage)
+    img.load()
     img = img.convert("RGB") if img.mode not in ("RGB", "L") else img
     if max(img.size) > 1600:
         img.thumbnail((1600, 1600), Image.LANCZOS)
@@ -723,7 +1063,7 @@ def list_pages():
     conn = get_db()
     rows = conn.execute("SELECT * FROM pages ORDER BY updated_at DESC, id DESC").fetchall()
     conn.close()
-    return jsonify([dict(r) for r in rows])
+    return jsonify([{**dict(r), "content": sanitize_html(r["content"])} for r in rows])
 
 
 @app.post("/api/pages")
@@ -800,9 +1140,17 @@ def upload_file():
         return jsonify({"error": "File too large (max 5 MB)"}), 400
     ext = Path(f.filename).suffix.lower()[:10]
     safe_ext = re.sub(r"[^a-z0-9.]", "", ext)
-    is_image = safe_ext in (".png", ".jpg", ".jpeg", ".gif", ".webp", ".svg", ".bmp")
-    if is_image and safe_ext not in (".gif", ".svg"):
-        file_data = compress_image(f)
+    image_ext = (".png", ".jpg", ".jpeg", ".gif", ".webp", ".bmp")
+    # Only images + inert documents — never .html/.htm/.xml/.svg etc. that could
+    # execute script when served from the same origin.
+    if safe_ext not in image_ext and safe_ext not in (".pdf", ".txt"):
+        return jsonify({"error": "File type not allowed. Only images, PDF and TXT are supported."}), 400
+    is_image = safe_ext in image_ext
+    if is_image and safe_ext != ".gif":
+        try:
+            file_data = compress_image(f)
+        except Exception:
+            return jsonify({"error": "File is not a valid image"}), 400
         final_ext = ".jpg"
     else:
         f.seek(0)
@@ -974,7 +1322,7 @@ def delete_routine(routine_id):
     return jsonify({"ok": True})
 
 
-BACKUP_TABLES = ["tasks", "notes", "routines", "routine_completions", "note_versions", "pages"]
+BACKUP_TABLES = ["tasks", "notes", "routines", "routine_completions", "note_versions", "pages", "note_shares"]
 
 
 def reset_db():
@@ -991,6 +1339,7 @@ def reset_db():
 @admin_only
 def reset():
     reset_db()
+    logger.warning("database reset by user id=%s (%s)", session.get("uid"), request.remote_addr)
     return jsonify({"ok": True})
 
 
@@ -1206,6 +1555,24 @@ def import_backup():
                 (title, icon, sanitize_html(str(row.get("content") or "")), stamp_c, stamp_u),
             )
             count("pages", "imported")
+        for row in data.get("note_shares", []):
+            token = str(row.get("token") or "").strip()
+            new_nid = note_id_map.get(_as_int(row.get("note_id")))
+            if not token or new_nid is None:
+                count("note_shares", "skipped")
+                continue
+            dup = conn.execute("SELECT 1 FROM note_shares WHERE token = ?", (token,)).fetchone()
+            if dup and mode == "merge":
+                count("note_shares", "skipped")
+                continue
+            try:
+                conn.execute(
+                    "INSERT INTO note_shares (note_id, token, created_at) VALUES (?, ?, ?)",
+                    (new_nid, token, str(row.get("created_at") or now_stamp())),
+                )
+                count("note_shares", "imported")
+            except sqlite3.IntegrityError:
+                count("note_shares", "skipped")
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -1214,6 +1581,7 @@ def import_backup():
     imported_total = sum(c["imported"] for c in counts.values())
     skipped_total = sum(c["skipped"] for c in counts.values())
     conn.close()
+    logger.info("backup import by user id=%s mode=%s imported=%s skipped=%s", session.get("uid"), mode, imported_total, skipped_total)
     return jsonify({"ok": True, "mode": mode, "imported": imported_total, "skipped": skipped_total, "detail": counts})
 
 
@@ -1412,41 +1780,6 @@ def import_excel():
     imported = sum(c["imported"] for c in counts.values())
     skipped = sum(c["skipped"] for c in counts.values())
     return jsonify({"ok": True, "mode": mode, "imported": imported, "skipped": skipped, "detail": counts})
-
-
-@app.get("/api/notes/<int:nid>/export.xlsx")
-def export_note_xlsx(nid):
-    from openpyxl import Workbook
-    from openpyxl.styles import Font
-
-    conn = get_db()
-    row = conn.execute("SELECT * FROM notes WHERE id=?", (nid,)).fetchone()
-    page_title = ""
-    if row and row["page_id"]:
-        prow = conn.execute("SELECT title FROM pages WHERE id=?", (row["page_id"],)).fetchone()
-        page_title = prow["title"] if prow else ""
-    conn.close()
-    if not row:
-        return jsonify({"error": "Not found"}), 404
-    d = dict(row)
-    text = re.sub(r"<[^>]+>", " ", d.get("content") or "")
-    d["content_text"] = re.sub(r"\s+", " ", text).strip()
-    d.pop("page_id", None)
-    d["page"] = page_title
-    ordered = {k: d[k] for k in ["id", "title", "tags", "pinned", "page", "created_at", "updated_at", "content_text", "content"]}
-    wb = Workbook()
-    ws = wb.active
-    ws.title = "Note"
-    ws.append(list(ordered.keys()))
-    for cell in ws[1]:
-        cell.font = Font(bold=True)
-    ws.append(list(ordered.values()))
-    ws.column_dimensions["I"].width = 90
-    ws.column_dimensions["A"].width = 6
-    return send_file(
-        _xlsx_bytes(wb), mimetype=XLSX_MIME, as_attachment=True,
-        download_name=f"note-{_slug(d['title'])}-{nid}.xlsx",
-    )
 
 
 @app.get("/api/tasks/<int:tid>/export.xlsx")
