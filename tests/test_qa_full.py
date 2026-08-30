@@ -613,7 +613,29 @@ class TestQaAazazAgent(QaBase):
         self.assertGreaterEqual(mem1, 4)      # baseline memory seeded
         self.assertEqual(mem1, mem2)          # idempotent memory
         row = self._aazaz_row()
-        self.assertEqual(row["icon"], "lucide:briefcase-business")
+        self.assertEqual(row["icon"], "lucide:briefcase")   # bundled icon name, renders in chat chips
+
+    def test_seed_aazaz_heals_bad_seed_icon(self):
+        # First release seeded 'lucide:briefcase-business' (missing from the bundle).
+        # Re-seeding must swap only that known-bad value and keep user-chosen icons.
+        conn = sqlite3.connect(app_module.DB_PATH)
+        app_module._seed_aazaz(conn)
+        aid = conn.execute(
+            "SELECT id FROM chat_agents WHERE name = ?", (app_module._AAZAZ_NAME,)
+        ).fetchone()[0]
+        conn.execute("UPDATE chat_agents SET icon = 'lucide:briefcase-business' WHERE id = ?", (aid,))
+        conn.commit()
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        healed = conn.execute("SELECT icon FROM chat_agents WHERE id = ?", (aid,)).fetchone()[0]
+        conn.execute("UPDATE chat_agents SET icon = 'coreui:cib-cassandra' WHERE id = ?", (aid,))
+        conn.commit()
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        kept = conn.execute("SELECT icon FROM chat_agents WHERE id = ?", (aid,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(healed, "lucide:briefcase")       # bad seed value repaired
+        self.assertEqual(kept, "coreui:cib-cassandra")     # user icon untouched
 
     def test_sanitize_fs_path_validation(self):
         with self.assertRaises(ValueError):

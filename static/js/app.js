@@ -4556,19 +4556,25 @@ function agentDefaultIcon(ag) {
   return "";
 }
 
+function agentIconIsRenderable(iconName) {
+  if (!iconName) return false;
+  if (!String(iconName).includes(":")) return true; // plain emoji
+  return isLucideIcon(iconName) || isCoreIcon(iconName);
+}
+
 function agentChipHTML(ag, iconOnly) {
   const isObj = ag && typeof ag === "object";
   const rawName = isObj ? ag.name : ag;
   const name = escapeHtml(String(rawName || ""));
+  const letter = escapeHtml(String(rawName || "").charAt(0).toUpperCase());
   const iconName = isObj ? (ag.icon || agentDefaultIcon(ag)) : "";
-  const icon = iconName ? pageIconHTML(iconName, iconOnly ? "h-4 w-4" : "h-3 w-3") : "";
+  const icon = agentIconIsRenderable(iconName) ? pageIconHTML(iconName, iconOnly ? "h-4 w-4" : "h-3 w-3") : "";
   if (iconOnly) {
     // Many responders at once -> keep the workflow row compact: avatar only,
     // full name on hover.
-    const letter = escapeHtml(String(rawName || "").charAt(0).toUpperCase());
     return `<span class="cf-chip cf-chip-ico" title="${name}" style="--chip-h:${agentHue(ag)}">${icon || letter}</span>`;
   }
-  return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon}<span>${name}</span></span>`;
+  return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon || `<span class="cf-chip-letter">${letter}</span>`}<span>${name}</span></span>`;
 }
 
 function chatSubtitleText(names, enabled) {
@@ -4887,11 +4893,11 @@ function renderAgentDetailsPanel() {
   }
   const isEdit = agentDetailsState.mode === "edit";
   const name = a.name || "";
-  const icon = a.icon || agentDefaultIcon(a) || "";
+  const iconName = a.icon || agentDefaultIcon(a) || "";
   const initials = escapeHtml((name.slice(0, 1) || "?").toUpperCase());
   const memCount = (a.memory || []).length;
-  const iconBig = icon ? pageIconHTML(icon, "h-7 w-7") : `<span class="text-lg font-bold">${initials}</span>`;
-  const iconHead = icon ? pageIconHTML(icon, "h-5 w-5") : `<span class="text-sm font-bold">${initials}</span>`;
+  const iconBig = agentIconIsRenderable(iconName) ? pageIconHTML(iconName, "h-7 w-7") : `<span class="text-lg font-bold">${initials}</span>`;
+  const iconHead = agentIconIsRenderable(iconName) ? pageIconHTML(iconName, "h-5 w-5") : `<span class="text-sm font-bold">${initials}</span>`;
 
   const detailsHtml = isEdit ? `
     <h3 class="text-sm font-semibold">Basic details</h3>
@@ -5061,8 +5067,9 @@ function renderAgents() {
   grid.innerHTML = agents.map((a) => {
     const isActive = !!activeMap[a.id];
     const initials = escapeHtml((a.name || "?").slice(0, 1).toUpperCase());
-    const tileIcon = (a.icon || agentDefaultIcon(a))
-      ? `${pageIconHTML(a.icon || agentDefaultIcon(a), "h-9 w-9")}`
+    const cardIcon = a.icon || agentDefaultIcon(a);
+    const tileIcon = agentIconIsRenderable(cardIcon)
+      ? `${pageIconHTML(cardIcon, "h-9 w-9")}`
       : `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">${initials}</span>`;
     return `
       <div class="flex flex-col rounded-xl border border-border bg-card/60 p-4 transition-all ${isActive ? "border-emerald-500/50 shadow-lg" : "hover:border-primary/40"}" data-agent-row="${a.id}">

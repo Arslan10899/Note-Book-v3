@@ -726,7 +726,7 @@ def migrate_db():
 
 
 _AAZAZ_NAME = "Aazaz Ahmed"
-_AAZAZ_ICON = "lucide:briefcase-business"
+_AAZAZ_ICON = "lucide:briefcase"
 _AAZAZ_DESCRIPTION = (
     "Executive Operations & System QC Auditor - Excel/Word/PDF/text files banata, padhta, update aur "
     "delete karta hai; har agent ki performance/quality audit (scorecard) report deta hai."
@@ -792,6 +792,15 @@ def _seed_aazaz(conn):
             return
     else:
         aid = row[0]
+        # Self-heal: early seed used an icon name missing from the bundled set;
+        # swap only that known-bad value so the chat chips render properly.
+        try:
+            conn.execute(
+                "UPDATE chat_agents SET icon = ? WHERE id = ? AND icon = ?",
+                (_AAZAZ_ICON, aid, "lucide:briefcase-business"),
+            )
+        except Exception:
+            pass
     try:
         have = {
             r[0]
