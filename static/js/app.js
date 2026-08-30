@@ -4756,6 +4756,8 @@ function openAgentMemoryDialog(a) {
       confirmDialog("Is memory ko delete karein?", async () => {
         await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
         await loadAgents();
+        const fresh = (agentsState.agents || []).find((x) => x.id === a.id);
+        if (fresh) openAgentMemoryDialog(fresh);
         toast("Memory deleted", "success");
       });
     });
