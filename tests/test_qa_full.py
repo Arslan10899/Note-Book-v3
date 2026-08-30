@@ -422,5 +422,138 @@ class TestQaAgentTools(QaBase):
         self.assertEqual(self.client.get("/api/tasks").get_json(), [])
 
 
+class TestQaAgentMemory(QaBase):
+    """agent_memory: schema, API CRUD, chat-driven SQL writes, refusal guards."""
+
+    def setUp(self):
+        super().setUp()
+        self._set("agent_enabled", "1")
+        self._set("live_chat_ai", "0")
+        self._set("review_enabled", "1")
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.executescript("""
+        INSERT INTO chat_agents (name, description, system_prompt, is_active, created_at, icon) VALUES
+        ('Rumman Lashari', 'Administrator & Agent Coordinator - poore system ka boss.',
+         'Aap Administrator hain.', 1, '2026-01-01 00:00:00', ''),
+        ('Medical Billing', 'Medical Billing specialist - answers from Notes, Tasks & Guidelines',
+         'Aap Medical Billing (RCM) specialist hain.', 0, '2026-01-01 00:00:00', '');
+        """)
+        conn.commit()
+        conn.close()
+
+    def _agent_row(self, name="Rumman Lashari"):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM chat_agents WHERE name = ?", (name,)).fetchone()
+        conn.close()
+        return row
+
+    def test_schema_and_list_include_memory(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        tables = {r[0] for r in conn.execute("SELECT name FROM sqlite_master WHERE type='table'")}
+        cols = {c[1] for c in conn.execute("PRAGMA table_info(agent_memory)")}
+        conn.close()
+        self.assertIn("agent_memory", tables)
+        self.assertTrue({"agent_id", "kind", "key", "content", "source", "created_by"} <= cols)
+        aid = self._agent_row()["id"]
+        r = self.client.post(f"/api/agents/{aid}/memory", json={"kind": "fact", "key": "fav_tea", "content": "Chai"})
+        self.assertEqual(r.status_code, 201)
+        ag = next(a for a in self.client.get("/api/agents").get_json()["agents"] if a["id"] == aid)
+        self.assertEqual(len(ag["memory"]), 1)
+        self.assertEqual(ag["memory"][0]["key"], "fav_tea")
+
+    def test_memory_crud_endpoints(self):
+        aid = self._agent_row()["id"]
+        r = self.client.post(f"/api/agents/{aid}/memory", json={"kind": "preference", "key": "lang", "content": "Urdu"})
+        self.assertEqual(r.status_code, 201)
+        mid = r.get_json()["id"]
+        self.assertEqual(
+            self.client.put(f"/api/agents/{aid}/memory/{mid}",
+                            json={"kind": "preference", "key": "lang", "content": "English"}).get_json()["content"],
+            "English",
+        )
+        self.assertEqual(self.client.delete(f"/api/agents/{aid}/memory/{mid}").status_code, 200)
+        ag = next(a for a in self.client.get("/api/agents").get_json()["agents"] if a["id"] == aid)
+        self.assertEqual(ag["memory"], [])
+        self.assertEqual(self.client.post("/api/agents/9999/memory", json={"content": "x"}).status_code, 404)
+
+    def test_write_tool_insert_via_chat(self):
+        aid = self._agent_row()["id"]
+        sid = self._fresh_session()
+        os.environ["GEMINI_API_KEY"] = "AIza-test"
+        plan = {"action": "sql", "kind": "sql", "id": None, "title": "", "fields": {},
+                "query": "INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by) "
+                         "VALUES ((SELECT id FROM chat_agents WHERE name='Rumman Lashari'), "
+                         "'fact', 'fav_tea', 'Chai', 'chat', 'Assistant')"}
+        try:
+            with mock.patch.object(app_module, "_agent_plan", return_value=plan), \
+                 mock.patch.object(app_module, "_review_draft", return_value=("approved", "")), \
+                 mock.patch.object(app_module, "_llm_prompt", return_value="Yaad rakh liya: Chai."):
+                text, source, outcome = app_module.agent_answer(sid, "yaad rakh lo woh chai pasand karta hai", "Tester", False)
+            self.assertEqual(outcome, "action")
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+        conn = sqlite3.connect(app_module.DB_PATH)
+        row = conn.execute("SELECT key, content FROM agent_memory WHERE agent_id = ?", (aid,)).fetchone()
+        conn.close()
+        self.assertIsNotNone(row)
+        self.assertEqual(tuple(row), ("fav_tea", "Chai"))
+        merged = app_module._agent_prompt_with_memory({"id": aid, "system_prompt": "Aap Administrator hain."})
+        self.assertIn("Chai", merged)
+
+    def test_write_tool_refuses_foreign_table_and_nonedml(self):
+        sid = self._fresh_session()
+        os.environ["GEMINI_API_KEY"] = "AIza-test"
+        bad = {"action": "sql", "kind": "sql", "id": None, "title": "", "fields": {},
+               "query": "INSERT INTO tasks (title) VALUES ('hacked')"}
+        try:
+            with mock.patch.object(app_module, "_agent_plan", return_value=bad), \
+                 mock.patch.object(app_module, "_review_draft", return_value=("approved", "")), \
+                 mock.patch.object(app_module, "_llm_prompt", return_value="idhar koi task nahi"):
+                text, source, outcome = app_module.agent_answer(sid, "task add karo", "Tester", False)
+            self.assertNotIn("I couldn't do that", text)
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+        conn = sqlite3.connect(app_module.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM tasks").fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 0)
+        aid = self._agent_row()["id"]
+        with self.assertRaises(ValueError):
+            app_module._run_agent_write_sql("UPDATE agent_memory SET content='x'")
+        with self.assertRaises(ValueError):
+            app_module._run_agent_write_sql("INSERT INTO tasks (title) VALUES ('x')")
+        with self.assertRaises(ValueError):
+            app_module._run_agent_write_sql("DROP TABLE agent_memory")
+        with self.assertRaises(ValueError):
+            app_module._run_agent_write_sql(
+                "INSERT INTO agent_memory (agent_id, content) VALUES (1, 'a'); "
+                "INSERT INTO agent_memory (agent_id, content) VALUES (2, 'b')"
+            )
+        text, ok = app_module._run_agent_write_sql(
+            "UPDATE agent_memory SET content='Updated' WHERE agent_id=" + str(aid)
+        )
+        self.assertTrue(ok)
+
+    def test_agents_delete_clears_memory(self):
+        aid = self._agent_row("Medical Billing")["id"]
+        self.client.post(f"/api/agents/{aid}/memory",
+                         json={"kind": "instruction", "key": "rule", "content": "Always verify CPT"})
+        self.assertEqual(self.client.delete(f"/api/agents/{aid}").status_code, 200)
+        conn = sqlite3.connect(app_module.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) FROM agent_memory WHERE agent_id = ?", (aid,)).fetchone()[0]
+        still = conn.execute("SELECT COUNT(*) FROM chat_agents WHERE id = ?", (aid,)).fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 0)
+        self.assertEqual(still, 0)
+
+    def test_readonly_sql_allows_memory_reads(self):
+        aid = self._agent_row()["id"]
+        self.client.post(f"/api/agents/{aid}/memory", json={"key": "k1", "content": "v1"})
+        text, ok = app_module._run_readonly_sql("SELECT content FROM agent_memory")
+        self.assertTrue(ok)
+        self.assertIn("v1", text)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

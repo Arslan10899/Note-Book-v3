@@ -23,6 +23,7 @@ from pathlib import Path
 from flask import (
     Flask,
     Response,
+    g,
     jsonify,
     render_template,
     request,
@@ -515,6 +516,18 @@ CREATE TABLE IF NOT EXISTS chat_agents (
     is_active INTEGER NOT NULL DEFAULT 0,
     created_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS agent_memory (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_id INTEGER NOT NULL REFERENCES chat_agents(id) ON DELETE CASCADE,
+    kind TEXT NOT NULL DEFAULT 'fact',
+    key TEXT NOT NULL DEFAULT '',
+    content TEXT NOT NULL DEFAULT '',
+    source TEXT NOT NULL DEFAULT 'manual',
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
 CREATE TABLE IF NOT EXISTS api_tools (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     name TEXT NOT NULL,
@@ -615,6 +628,22 @@ def migrate_db():
         agent_cols = [r[1] for r in conn.execute("PRAGMA table_info(chat_agents)").fetchall()]
         if "icon" not in agent_cols:
             conn.execute("ALTER TABLE chat_agents ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS agent_memory (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_id INTEGER NOT NULL REFERENCES chat_agents(id) ON DELETE CASCADE,
+                kind TEXT NOT NULL DEFAULT 'fact',
+                key TEXT NOT NULL DEFAULT '',
+                content TEXT NOT NULL DEFAULT '',
+                source TEXT NOT NULL DEFAULT 'manual',
+                created_by TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT '',
+                updated_at TEXT NOT NULL DEFAULT ''
+            );
+            CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
+            """
+        )
         conn.execute(
             """
             CREATE TABLE IF NOT EXISTS api_tools (
@@ -1935,13 +1964,25 @@ _AGENT_DECISION_SYSTEM = (
     "COUNT/SUM summary for counts).\n"
     "  The query MUST be read-only (SELECT only) "
     "  against these app tables ONLY: tasks, notes, pages, routines, knowledge_base, chat_sessions, "
-    "  chat_messages, chat_agents, api_tools. No writes, no pragma, no other tables. "
+    "  chat_messages, chat_agents, api_tools, agent_memory. No writes, no pragma, no other tables. "
     "  Example: {\"action\":\"sql\",\"query\":\"SELECT title, priority FROM tasks WHERE done=0 ORDER BY id\"}.\n"
     "  STAFF DIRECTORY RULE: all staff contact details, emails and directories are stored as TEXT "
     "  inside the content column of the PAGES and NOTES tables. You must NEVER attempt to query the "
     "  users table or chat_settings. When asked for a staff member's email or details, ALWAYS write "
     "  the query against pages, e.g. "
     "  {\"action\":\"sql\",\"query\":\"SELECT title, content FROM pages WHERE content LIKE '%Ali%'\"}.\n"
+    '{"action":"sql","query":"INSERT/UPDATE/DELETE on agent_memory ..."}\n'
+    "  MEMORY TOOL: when the user says something like \"yaad rakh lo\", \"memory mein save kar do\", "
+    "\"remember this\", \"aage ke liye note kar lo\", or states a fact/rule/preference that a specific "
+    "staff agent should remember — write it to agent_memory (the ONLY writable table). "
+    "Resolve the agent by name via a subquery, e.g. "
+    "{\"action\":\"sql\",\"query\":\"INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by) "
+    "VALUES ((SELECT id FROM chat_agents WHERE name='Asmar'), 'fact', 'preferred_language', 'Urdu', 'chat', 'Assistant')\"}.\n"
+    "  kind must be one of: fact | instruction | role | preference. Give each row a short unique \"key\" "
+    "and always provide content. Updating an existing key: "
+    "{\"action\":\"sql\",\"query\":\"UPDATE agent_memory SET content='English' WHERE key='preferred_language' "
+    "AND agent_id=(SELECT id FROM chat_agents WHERE name='Asmar')\"}.\n"
+    "  Never write to any other table. Memory writes pass through the Review Agent like other actions.\n"
     '{"action":"fetch","tool_id":<id>,"params":{...}}\n'
     "  ONLY to call the external APIs listed in the Available tools section below; fill the "
     "{placeholder} params of its URL template via \"params\". Never call any other URL.\n"
@@ -2503,6 +2544,7 @@ def _mark_tasks_done(decision):
 _SAFE_SQL_TABLES = (
     "tasks", "notes", "pages", "routines", "routine_completions", "knowledge_base",
     "chat_sessions", "chat_messages", "chat_agents", "api_tools", "note_shares",
+    "agent_memory",
 )
 _SQL_DENY_RE = re.compile(
     r"\b(insert|update|delete|drop|alter|create|attach|detach|reindex|vacuum|replace|truncate|"
@@ -2559,6 +2601,13 @@ _SQL_REFUSAL_HINTS = (
     "allowlist mein nahi",
     "sirf SELECT-type read-only",
     "read-only mode",
+    "ye statement allow nahi hai",
+    "sirf agent_memory table par write",
+    "single statement allowed",
+    "sirf INSERT/UPDATE/DELETE statements allowed",
+    "subquery sirf chat_agents",
+    "Memory tool: empty statement",
+    "Memory tool: requires a WHERE clause",
 )
 
 
@@ -2567,6 +2616,51 @@ def _sql_tool_refused(exc):
     non-select), as opposed to a data/execution problem."""
     msg = str(exc)
     return any(h in msg for h in _SQL_REFUSAL_HINTS)
+
+
+_WRITE_KEYWORD_RE = re.compile(r"^(insert\s+into|insert\s+or\s+\w+|update|delete\s+from)\s+([a-z][a-z0-9_]*)", re.IGNORECASE)
+_WRITE_DENY_RE = re.compile(
+    r"\b(pragma|drop|alter|create|attach|detach|reindex|vacuum|truncate|union|"
+    r"exec\b|execute|load_file|begin|commit|rollback)\b",
+    re.IGNORECASE,
+)
+
+
+def _run_agent_write_sql(query, created_by=""):
+    """Agent memory write tool: single-statement INSERT/UPDATE/DELETE against the
+    agent_memory table only. chat_agents may appear in a subquery solely to resolve
+    an agent by name. Returns (text, ok); raises ValueError on refusal."""
+    q = (query or "").strip().rstrip(";").strip()
+    if not q:
+        raise ValueError("Memory tool: empty statement.")
+    if ";" in q:
+        raise ValueError("Memory tool: single statement allowed.")
+    if _WRITE_DENY_RE.search(q):
+        raise ValueError("Memory tool: ye statement allow nahi hai (sirf agent_memory write).")
+    if re.search(r"\bselect\b", q, re.IGNORECASE):
+        refs = set(m.group(1).lower() for m in _SQL_TABLE_RE.finditer(q))
+        bad = refs - {"chat_agents"}
+        if bad:
+            raise ValueError("Memory tool: subquery sirf chat_agents se name lookup ho sakta hai: " + ", ".join(sorted(bad)) + ".")
+    m = _WRITE_KEYWORD_RE.match(q)
+    if not m:
+        raise ValueError("Memory tool: sirf INSERT/UPDATE/DELETE statements allowed.")
+    kw = m.group(1).lower()
+    if m.group(2).lower() != "agent_memory":
+        raise ValueError("Memory tool: sirf agent_memory table par write ho sakta hai.")
+    if kw != "insert" and not kw.startswith("insert") and not re.search(r"\bwhere\b", q, re.IGNORECASE):
+        raise ValueError("Memory tool: requires a WHERE clause.")
+    conn = get_db()
+    try:
+        cur = conn.execute(q)
+        conn.commit()
+        rows = cur.rowcount if cur.rowcount is not None else 0
+    finally:
+        conn.close()
+    _drop_active_agents_cache()
+    if rows <= 0:
+        return "Memory result: no rows were affected (koi matching row nahi mili).", True
+    return f"Memory updated: {rows} row(s) agent memory mein save/change ho gayi hain.", True
 
 
 def _sql_refusal_fallback(question, agent=None, user_name=None, first_message=False):
@@ -2667,13 +2761,20 @@ def _tool_inventory_text():
     lines = [
         "\nAvailable tools:",
         "- sql: read-only SELECT queries ONLY on app tables (tasks, notes, pages, routines, "
-        "knowledge_base, chat_sessions, chat_messages, chat_agents, api_tools). "
+        "knowledge_base, chat_sessions, chat_messages, chat_agents, api_tools, agent_memory). "
         "Use for counts, sums, trends, filtering, lookups the user asks about. "
         "NEVER query the users table or chat_settings. Staff contact details, emails and directories "
         "are stored as TEXT inside pages.content / notes.content; for a staff email or detail lookup "
         "always write: SELECT title, content FROM pages WHERE content LIKE '%NAME%' OR title LIKE '%NAME%' "
         "(or the same against notes). Queries that the read-only guard would reject are forbidden — if "
         "unsure, do NOT use sql; the semantic search over pages/notes will answer instead.",
+        "- memory: agent_memory is the ONLY writable table. Use INSERT/UPDATE/DELETE on agent_memory "
+        "when the user asks an agent to remember something ('yaad rakh lo', 'remember this', 'save "
+        "this for later'). Resolve the agent id by name in a subquery: INSERT INTO agent_memory "
+        "(agent_id, kind, key, content, source, created_by) VALUES ((SELECT id FROM chat_agents "
+        "WHERE name='<AGENT NAME>'), 'fact', '<short-key>', '<content>', 'chat', 'Assistant'). "
+        "kind is one of fact | instruction | role | preference; UPDATE/DELETE need a WHERE clause. "
+        "Saved memory is merged into that agent's system prompt for every future reply.",
     ]
     for t in _api_tools():
         lines.append(
@@ -2752,7 +2853,12 @@ def _run_agent_action(decision, question="", wrap_result=True):
     if action == "done":
         return _mark_tasks_done(decision)
     if action == "sql":
-        text, _ok = _run_readonly_sql(decision.get("query") or "")
+        query = decision.get("query") or ""
+        first_kw = (query.strip().rstrip(";").split(None, 1) or [""])[0].lower()
+        if first_kw in ("insert", "update", "delete"):
+            text, _ok = _run_agent_write_sql(query)
+        else:
+            text, _ok = _run_readonly_sql(query)
         return _wrap_sql_result(question, text) if wrap_result else text
     if action == "fetch":
         text, _ok = _safe_fetch(decision.get("tool_id"), decision.get("params"))
@@ -2951,8 +3057,84 @@ def _agent_mode_enabled():
     return _agent_enabled() and not _live_chat_enabled()
 
 
+def _cache_get(key, default=None):
+    """Per-request cache read (flask.g). Falls back to default outside an app context."""
+    try:
+        return getattr(g, key, default)
+    except (RuntimeError, AttributeError):
+        return default
+
+
+def _cache_set(key, value):
+    try:
+        setattr(g, key, value)
+    except (RuntimeError, AttributeError):
+        pass
+
+
+def _drop_active_agents_cache():
+    """Invalidate per-request agent caches (agents/memory changed). Safe no-op outside a request."""
+    _cache_set("_active_agent_cache", None)
+    _cache_set("_active_agents_cache", None)
+    _cache_set("_agents_all_cache", None)
+    _cache_set("_mem_gen", (_cache_get("_mem_gen", 0) + 1))
+
+
+def _agent_memory_rows(conn, agent_id, limit=40):
+    try:
+        rows = conn.execute(
+            "SELECT id, kind, key, content, source, created_by, created_at, updated_at "
+            "FROM agent_memory WHERE agent_id = ? ORDER BY id ASC LIMIT ?",
+            (agent_id, limit),
+        ).fetchall()
+    except Exception:
+        return []
+    return [dict(r) for r in rows]
+
+
+def _agent_memory_text(conn, agent_id):
+    """Compact 'Remembered context' block for one agent, or '' when empty."""
+    rows = _agent_memory_rows(conn, agent_id)
+    if not rows:
+        return ""
+    parts = []
+    for r in rows:
+        label = (r.get("key") or r.get("kind") or "note").strip()
+        val = (r.get("content") or "").strip()
+        if not val:
+            continue
+        parts.append("- " + (label + ": " if label else "") + val.replace("\n", " ")[:240])
+    if not parts:
+        return ""
+    return "\n\nRemembered context (agent_memory, aapki baaton se save hua):\n" + "\n".join(parts)
+
+
+def _agent_prompt_with_memory(agent):
+    """Effective worker/reviewer system prompt = system_prompt + saved memory."""
+    if not agent:
+        return ""
+    prompt = (agent.get("system_prompt") or "").strip()
+    aid = agent.get("id")
+    if aid is None:
+        return prompt
+    gen = _cache_get("_mem_gen", 0)
+    key = f"_mem_{gen}_{aid}"
+    mem = _cache_get(key)
+    if mem is None:
+        conn = get_db()
+        try:
+            mem = _agent_memory_text(conn, aid)
+        finally:
+            conn.close()
+        _cache_set(key, mem)
+    return (prompt + mem).strip()
+
+
 def _active_agent():
-    """Return the currently active custom agent row, or None."""
+    """Return the currently active custom agent row, or None (cached per request)."""
+    cached = _cache_get("_active_agent_cache")
+    if cached is not None:
+        return cached or None
     try:
         conn = get_db()
         try:
@@ -2963,11 +3145,16 @@ def _active_agent():
             conn.close()
     except Exception:
         return None
-    return dict(row) if row else None
+    result = dict(row) if row else None
+    _cache_set("_active_agent_cache", result)
+    return result
 
 
 def _active_agents():
-    """List of ALL custom agents currently turned ON (newest first)."""
+    """List of ALL custom agents currently turned ON (newest first), cached per request."""
+    cached = _cache_get("_active_agents_cache")
+    if cached is not None:
+        return cached
     try:
         conn = get_db()
         try:
@@ -2976,9 +3163,11 @@ def _active_agents():
             ).fetchall()
         finally:
             conn.close()
-        return [dict(r) for r in rows]
+        result = [dict(r) for r in rows]
     except Exception:
-        return []
+        result = []
+    _cache_set("_active_agents_cache", result)
+    return result
 
 
 def agent_answer(sid, question, user_name=None, first_message=False, portals=None, agent_prompt=None, attachments=None):
@@ -3011,7 +3200,7 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
 
     if agent_prompt is None:
         replying = _agent_router(question, _active_agents(), sid=sid)
-        agent_prompt = (replying.get("system_prompt") or "").strip() if replying else ""
+        agent_prompt = _agent_prompt_with_memory(replying)
     else:
         replying = _active_agent()
 
@@ -3161,15 +3350,21 @@ def _is_billing_text(text):
 
 
 def _agents_all():
+    """All custom agents (identity + settings), cached per request."""
+    cached = _cache_get("_agents_all_cache")
+    if cached is not None:
+        return cached
     try:
         conn = get_db()
         try:
             rows = conn.execute("SELECT * FROM chat_agents ORDER BY id ASC").fetchall()
         finally:
             conn.close()
-        return [dict(r) for r in rows]
+        result = [dict(r) for r in rows]
     except Exception:
-        return []
+        result = []
+    _cache_set("_agents_all_cache", result)
+    return result
 
 
 def _billing_agent():
@@ -3303,7 +3498,7 @@ def _review_system(reviewer_agent):
         parts.append(
             "Your expert persona (the office expects you to enforce this domain expertise):\n"
             + (reviewer_agent.get("description") or "")
-            + "\n" + (reviewer_agent.get("system_prompt") or "")
+            + "\n" + _agent_prompt_with_memory(reviewer_agent)
         )
     parts.append(
         "Reply with ONLY valid JSON, no markdown, no commentary:\n"
@@ -3363,7 +3558,7 @@ def _maker_checker_text(worker_agent, worker_provider, question, draft, attachme
     is 'approved' or 'manual'. max_loops = number of allowed corrections."""
     max_loops = _review_max_loops()
     worker_name = (worker_agent.get("name") if worker_agent else "") or ""
-    agent_prompt = (worker_agent.get("system_prompt") or "").strip() if worker_agent else ""
+    agent_prompt = _agent_prompt_with_memory(worker_agent)
     reviewer = _reviewer_agent(worker_agent, question)
     current = draft
     for i in range(max_loops + 1):
@@ -3407,7 +3602,7 @@ def _maker_checker_plan(worker_agent, provider, question, plan, attachments=None
     (final_plan, status). Never executes anything. status: approved|manual."""
     max_loops = _review_max_loops()
     worker_name = (worker_agent.get("name") if worker_agent else "") or ""
-    agent_prompt = (worker_agent.get("system_prompt") or "").strip() if worker_agent else ""
+    agent_prompt = _agent_prompt_with_memory(worker_agent)
     reviewer = _reviewer_agent(worker_agent, question)
     current = plan
     for i in range(max_loops + 1):
@@ -3765,10 +3960,29 @@ def _chat_flow_events(sid, question, user_msg, user_name=None, first_message=Fal
     if agent_on:
         actives = _active_agents()
         if actives:
-            agents_payload = [{"name": a["name"], "icon": a.get("icon") or ""} for a in actives]
-            names = [a["name"] for a in actives]
-            yield {"node": "agents", "status": "running", "label": "Agents", "agents": agents_payload, "note": "Connecting agents\u2026"}
-            yield {"node": "agents", "status": "success", "label": "Agents", "agents": agents_payload, "note": "Ready: " + ", ".join(names)}
+            # Surface only the agent(s) that actually reply (the router picks a
+            # single responder, e.g. "Rumman") rather than every selected one —
+            # so the workflow reflects who really answered.
+            if replying:
+                agents_payload = [{"name": replying["name"], "icon": replying.get("icon") or ""}]
+                routed = replying["name"]
+            else:
+                agents_payload = []
+                routed = None
+            yield {
+                "node": "agents",
+                "status": "running",
+                "label": "Agents",
+                "agents": agents_payload,
+                "note": ("Routed to " + routed) if routed else "Routing...",
+            }
+            yield {
+                "node": "agents",
+                "status": "success",
+                "label": "Agents",
+                "agents": agents_payload,
+                "note": ("Replied by " + routed) if routed else "General reply",
+            }
         else:
             yield {"node": "agents", "status": "skipped", "label": "Agents", "note": "No custom agents active"}
 
@@ -5164,10 +5378,22 @@ def agents_list():
     actives = conn.execute(
         "SELECT id FROM chat_agents WHERE is_active = 1 ORDER BY id DESC"
     ).fetchall()
+    mem_rows = conn.execute(
+        "SELECT id, agent_id, kind, key, content, source, created_by, created_at, updated_at "
+        "FROM agent_memory ORDER BY id ASC"
+    ).fetchall()
     conn.close()
     active_ids = [r["id"] for r in actives]
+    memory = {}
+    for m in mem_rows:
+        memory.setdefault(m["agent_id"], []).append(dict(m))
+    agents = []
+    for r in rows:
+        item = dict(r)
+        item["memory"] = memory.get(item["id"], [])
+        agents.append(item)
     return jsonify({
-        "agents": [dict(r) for r in rows],
+        "agents": agents,
         "active_id": active_ids[0] if active_ids else None,
         "active_ids": active_ids,
     })
@@ -5190,6 +5416,7 @@ def agents_create():
     conn.commit()
     row = conn.execute("SELECT * FROM chat_agents WHERE id = ?", (cur.lastrowid,)).fetchone()
     conn.close()
+    _drop_active_agents_cache()
     return jsonify(dict(row)), 201
 
 
@@ -5213,6 +5440,7 @@ def agents_update(aid):
     conn.commit()
     updated = conn.execute("SELECT * FROM chat_agents WHERE id = ?", (aid,)).fetchone()
     conn.close()
+    _drop_active_agents_cache()
     return jsonify(dict(updated))
 
 
@@ -5228,6 +5456,7 @@ def agents_set_active(aid):
     conn.execute("UPDATE chat_agents SET is_active = 1 WHERE id = ?", (aid,))
     conn.commit()
     conn.close()
+    _drop_active_agents_cache()
     return jsonify({"ok": True, "active_id": aid})
 
 
@@ -5251,6 +5480,7 @@ def agents_off():
         conn.execute("UPDATE chat_agents SET is_active = 0")
     conn.commit()
     conn.close()
+    _drop_active_agents_cache()
     return jsonify({"ok": True})
 
 
@@ -5262,9 +5492,84 @@ def agents_delete(aid):
     if row is None:
         conn.close()
         return jsonify({"error": "Agent not found"}), 404
+    conn.execute("DELETE FROM agent_memory WHERE agent_id = ?", (aid,))
     conn.execute("DELETE FROM chat_agents WHERE id = ?", (aid,))
     conn.commit()
     conn.close()
+    _drop_active_agents_cache()
+    return jsonify({"ok": True})
+
+
+@app.post("/api/agents/<int:aid>/memory")
+@admin_only
+def agent_memory_create(aid):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    agent = conn.execute("SELECT id FROM chat_agents WHERE id = ?", (aid,)).fetchone()
+    if agent is None:
+        conn.close()
+        return jsonify({"error": "Agent not found"}), 404
+    kind = str(data.get("kind") or "fact")[:32].lower()
+    key = str(data.get("key") or "").strip()[:120]
+    content = str(data.get("content") or "").strip()[:2000]
+    if not content:
+        conn.close()
+        return jsonify({"error": "Content is required"}), 400
+    if not key:
+        key = re.sub(r"\s+", "_", content[:48]).strip("_")[:120]
+    stamp = now_stamp()
+    cur = conn.execute(
+        "INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+        (aid, kind, key, content,
+         str(data.get("source") or "manual")[:20],
+         str(data.get("created_by") or "")[:60], stamp, stamp),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM agent_memory WHERE id = ?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    _drop_active_agents_cache()
+    return jsonify(dict(row)), 201
+
+
+@app.put("/api/agents/<int:aid>/memory/<int:mid>")
+@admin_only
+def agent_memory_update(aid, mid):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    row = conn.execute("SELECT * FROM agent_memory WHERE id = ? AND agent_id = ?", (mid, aid)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Memory not found"}), 404
+    kind = str(data.get("kind", row["kind"]) or "fact")[:32].lower()
+    key = str(data.get("key", row["key"]) or "").strip()[:120]
+    content = str(data.get("content", row["content"]) or "").strip()[:2000]
+    if not content:
+        conn.close()
+        return jsonify({"error": "Content is required"}), 400
+    conn.execute(
+        "UPDATE agent_memory SET kind = ?, key = ?, content = ?, updated_at = ? WHERE id = ?",
+        (kind, key, content, now_stamp(), mid),
+    )
+    conn.commit()
+    updated = conn.execute("SELECT * FROM agent_memory WHERE id = ?", (mid,)).fetchone()
+    conn.close()
+    _drop_active_agents_cache()
+    return jsonify(dict(updated))
+
+
+@app.delete("/api/agents/<int:aid>/memory/<int:mid>")
+@admin_only
+def agent_memory_delete(aid, mid):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM agent_memory WHERE id = ? AND agent_id = ?", (mid, aid)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Memory not found"}), 404
+    conn.execute("DELETE FROM agent_memory WHERE id = ?", (mid,))
+    conn.commit()
+    conn.close()
+    _drop_active_agents_cache()
     return jsonify({"ok": True})
 
 

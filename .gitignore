@@ -11,3 +11,9 @@ secret.key
 # OS junk
 Thumbs.db
 .DS_Store
+
+# Private runtime data — NEVER committed (DB travels via Backup & Restore only)
+assistant.db
+assistant.db-wal
+assistant.db-shm
+uploads/

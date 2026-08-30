@@ -1713,6 +1713,16 @@ body.sidebar-open #sidebar-overlay {
 }
 .cf-chip svg { width: 11px; height: 11px; flex: none; color: #14161a; opacity: 0.85; }
 .dark .cf-chip svg { color: #ffffff; opacity: 1; }
+.cf-chip-ico {
+  width: 1.375rem;
+  height: 1.375rem;
+  max-width: 1.375rem;
+  padding: 0;
+  justify-content: center;
+  border-radius: 999px;
+}
+.cf-chip-ico svg { width: 0.75rem; height: 0.75rem; }
+.cf-chip-ico { font-size: 0.5rem; }
 .chat-agent-by {
   display: inline-flex;
   align-items: center;
@@ -1942,3 +1952,36 @@ main {
 /* Tables & code blocks inside the viewer stay inside their card */
 .viewer-body .md-table-wrap,
 .viewer-body pre { max-width: 100%; }
+
+/* ---- Mobile-first hardening (phones & small tablets) ---------------- */
+
+/* Never a horizontal page scroll; clip does NOT disable position:sticky */
+html, body { overflow-x: clip; }
+
+/* Dialogs cap at 44rem on desktop; on phones they already use 100vw-1.5rem */
+.dialog-panel { max-width: min(44rem, calc(100vw - 1.5rem)); }
+
+/* Chat card uses dvh so the browser URL-bar never causes page overflow */
+#chat-card { height: calc(100vh - 9rem); min-height: 480px; }
+@supports (height: 100dvh) {
+  #chat-card { height: calc(100dvh - 9rem); }
+}
+
+/* Hide scrollbars on chip rails (chat-flow, viewers) without losing scroll */
+.no-scrollbar { scrollbar-width: none; -ms-overflow-style: none; }
+.no-scrollbar::-webkit-scrollbar { display: none; width: 0; }
+
+@media (max-width: 767px) {
+  #chat-card {
+    height: calc(100dvh - 7.5rem);
+    min-height: 22rem;
+  }
+  .chat-flow-track { scrollbar-width: none; -ms-overflow-style: none; }
+  .chat-flow-track::-webkit-scrollbar { display: none; width: 0; }
+}
+
+@media (max-width: 480px) {
+  .toast-container { left: 16px; }
+  .toast { width: 100%; min-width: 0; max-width: 100%; }
+  .agent-toggle { flex-wrap: wrap; }
+}

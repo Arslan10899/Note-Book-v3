@@ -1031,8 +1031,8 @@ async function usersDialog() {
   openDialog(`
     <h2 class="text-lg font-semibold">Manage Users</h2>
     <p class="mt-0.5 text-xs text-muted-foreground">Admins can change roles and remove accounts. Data is shared across all users.</p>
-    <div class="mt-4 max-h-[50vh] overflow-y-auto">
-      <table class="w-full">
+    <div class="mt-4 max-h-[50vh] overflow-x-auto overflow-y-auto">
+      <table class="w-full min-w-[32rem]">
         <thead><tr class="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground"><th class="pb-2 pr-2">Account</th><th class="pb-2 pr-2">Joined</th><th class="pb-2 pr-2">Role</th><th></th></tr></thead>
         <tbody class="divide-y divide-border">${rows}</tbody>
       </table>
@@ -4099,12 +4099,9 @@ function chatFlowSet(nodeId, status, data) {
   if (data && data.agents && data.agents.length) {
     const w = document.createElement("span");
     w.className = "chat-flow-agents";
-    w.innerHTML = data.agents.map((ag) => {
-      const isObj = ag && typeof ag === "object";
-      const name = escapeHtml(isObj ? ag.name : String(ag));
-      const icon = isObj && ag.icon ? pageIconHTML(ag.icon, "h-3 w-3") : "";
-      return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon}<span>${name}</span></span>`;
-    }).join("");
+    // More than 3 actual responders -> icon-only chips so names never
+    // break the workflow row.
+    w.innerHTML = data.agents.map((ag) => agentChipHTML(ag, data.agents.length > 3)).join("");
     const body = el.querySelector(".chat-flow-body");
     if (body) body.appendChild(w);
   }
@@ -4401,6 +4398,7 @@ async function chatSend() {
     chatFlowReset();
     if (userError) toast(userError, "error");
     renderChatMessages();
+    refreshAgentsSilently();
     setTimeout(() => {
       const i = $("#chat-input");
       if (i) i.focus();
@@ -4525,10 +4523,17 @@ function agentHue(ag) {
   return AGENT_CHIP_HUES[h % AGENT_CHIP_HUES.length];
 }
 
-function agentChipHTML(ag) {
+function agentChipHTML(ag, iconOnly) {
   const isObj = ag && typeof ag === "object";
-  const name = escapeHtml(isObj ? ag.name : String(ag));
-  const icon = isObj && ag.icon ? pageIconHTML(ag.icon, "h-3 w-3") : "";
+  const rawName = isObj ? ag.name : ag;
+  const name = escapeHtml(String(rawName || ""));
+  const icon = isObj && ag.icon ? pageIconHTML(ag.icon, iconOnly ? "h-4 w-4" : "h-3 w-3") : "";
+  if (iconOnly) {
+    // Many responders at once -> keep the workflow row compact: avatar only,
+    // full name on hover.
+    const letter = escapeHtml(String(rawName || "").charAt(0).toUpperCase());
+    return `<span class="cf-chip cf-chip-ico" title="${name}" style="--chip-h:${agentHue(ag)}">${icon || letter}</span>`;
+  }
   return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon}<span>${name}</span></span>`;
 }
 
@@ -4640,6 +4645,144 @@ async function loadAgents() {
   renderAgents();
 }
 
+function refreshAgentsSilently() {
+  api("/api/agents")
+    .then((res) => {
+      if (!res || !Array.isArray(res.agents)) return;
+      agentsState.agents = res.agents;
+      agentsState.active_ids = res.active_ids || [];
+      if (res.active_id != null) agentsState.active_id = res.active_id;
+      renderAgents();
+    })
+    .catch(() => {});
+}
+
+const AGENT_MEMORY_KINDS = [
+  { v: "fact", l: "Fact" },
+  { v: "instruction", l: "Instruction" },
+  { v: "role", l: "Role" },
+  { v: "preference", l: "Preference" },
+];
+
+function agentMemoryKindBadge(kind) {
+  const k = AGENT_MEMORY_KINDS.find((x) => x.v === kind);
+  return `<span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">${escapeHtml((k ? k.l : kind) || "fact")}</span>`;
+}
+
+function openAgentMemoryDialog(a) {
+  if (!a) return;
+  const rows = a.memory || [];
+  const listHtml = !rows.length
+    ? `<p class="text-sm italic text-muted-foreground">Abhi koi memory save nahi. Neeche form se ya Chat se save karein.</p>`
+    : `<div class="space-y-2">${rows.map((m) => `
+        <div class="flex items-start justify-between gap-2 rounded-lg border border-border/70 bg-background/40 p-2.5" data-mem-row="${m.id}">
+          <div class="min-w-0">
+            <div class="flex items-center gap-1.5">${agentMemoryKindBadge(m.kind)}<span class="truncate text-xs font-semibold">${escapeHtml(m.key || m.kind || "note")}</span></div>
+            <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">${escapeHtml(m.content || "")}</p>
+            <p class="mt-1 text-[10px] text-muted-foreground">${escapeHtml(m.source || "manual")}${m.created_at ? " \u00b7 " + escapeHtml(String(m.created_at).slice(0, 10)) : ""}</p>
+          </div>
+          <div class="flex shrink-0 items-center gap-1">
+            <button type="button" class="btn btn-ghost btn-sm" data-mem-edit="${m.id}">Edit</button>
+            <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-mem-del="${m.id}">Delete</button>
+          </div>
+        </div>`).join("")}</div>`;
+
+  openDialog(`
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="truncate text-base font-semibold">Memory \u2014 ${escapeHtml(a.name)}</h3>
+        <p class="mt-0.5 text-xs text-muted-foreground">Jo agent yaad rakhta hai; Chat se bhi save hota hai</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm shrink-0" data-close-dialog-panel aria-label="Close">\u2715</button>
+    </div>
+    <div class="mt-4 max-h-64 space-y-2 overflow-y-auto">${listHtml}</div>
+    <div class="mt-4 rounded-lg border border-border p-3">
+      <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-mem-form-title>Nayi memory</p>
+      <div class="flex flex-wrap gap-2">
+        <select data-mem-kind class="input h-9 min-w-[8.5rem] shrink-0">${AGENT_MEMORY_KINDS.map((k) => `<option value="${k.v}">${k.l}</option>`).join("")}</select>
+        <input type="text" data-mem-key class="input h-9 min-w-0 flex-1" maxlength="120" placeholder="Key e.g. feeding_timings" />
+      </div>
+      <textarea data-mem-content rows="2" class="input mt-2 w-full resize-none" maxlength="2000" placeholder="Content \u2014 'Asmar ke calls 2pm ke baad'"></textarea>
+      <div class="mt-3 flex items-center gap-2">
+        <button type="button" class="btn btn-primary btn-sm" data-mem-save-new>Save memory</button>
+        <button type="button" class="btn btn-outline btn-sm hidden" data-mem-update-cancel>Cancel edit</button>
+        <span class="text-xs text-muted-foreground" data-mem-status></span>
+      </div>
+    </div>
+  `);
+
+  const statusEl = $("#dialog-root").querySelector("[data-mem-status]");
+  const formTitle = $("#dialog-root").querySelector("[data-mem-form-title]");
+  const kindSel = $("#dialog-root").querySelector("[data-mem-kind]");
+  const keyIn = $("#dialog-root").querySelector("[data-mem-key]");
+  const contentTa = $("#dialog-root").querySelector("[data-mem-content]");
+  const saveBtn = $("#dialog-root").querySelector("[data-mem-save-new]");
+  const cancelEditBtn = $("#dialog-root").querySelector("[data-mem-update-cancel]");
+
+  const resetForm = () => {
+    saveBtn.dataset.memUpdate = "";
+    saveBtn.textContent = "Save memory";
+    cancelEditBtn.classList.add("hidden");
+    formTitle.textContent = "Nayi memory";
+    kindSel.value = "fact";
+    keyIn.value = "";
+    contentTa.value = "";
+  };
+
+  $("#dialog-root").querySelector("[data-close-dialog-panel]").addEventListener("click", closeDialog);
+
+  $("#dialog-root").querySelectorAll("[data-mem-del]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const mid = Number(b.dataset.memDel);
+      confirmDialog("Is memory ko delete karein?", async () => {
+        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
+        await loadAgents();
+        toast("Memory deleted", "success");
+      });
+    });
+  });
+  $("#dialog-root").querySelectorAll("[data-mem-edit]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const mid = Number(b.dataset.memEdit);
+      const m = rows.find((x) => x.id === mid);
+      if (!m) return;
+      saveBtn.dataset.memUpdate = String(mid);
+      saveBtn.textContent = "Update memory";
+      cancelEditBtn.classList.remove("hidden");
+      formTitle.textContent = "Memory edit";
+      kindSel.value = m.kind || "fact";
+      keyIn.value = m.key || "";
+      contentTa.value = m.content || "";
+    });
+  });
+  cancelEditBtn.addEventListener("click", resetForm);
+  saveBtn.addEventListener("click", async () => {
+    const kind = kindSel.value;
+    const key = keyIn.value.trim();
+    const content = contentTa.value.trim();
+    if (!content) {
+      toast("Content is required", "error");
+      return;
+    }
+    const mid = saveBtn.dataset.memUpdate;
+    statusEl.textContent = "Saving\u2026";
+    try {
+      if (mid) {
+        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "PUT", body: JSON.stringify({ kind, key, content }) });
+      } else {
+        await api(`/api/agents/${a.id}/memory`, { method: "POST", body: JSON.stringify({ kind, key, content }) });
+      }
+      statusEl.textContent = "";
+      closeDialog();
+      await loadAgents();
+      toast(mid ? "Memory updated" : "Memory saved", "success");
+    } catch (err) {
+      statusEl.textContent = "";
+      toast(err.message, "error");
+    }
+  });
+}
+
 function renderAgents() {
   const grid = $("#agents-grid");
   const empty = $("#agents-empty");
@@ -4690,6 +4833,7 @@ function renderAgents() {
             : `<p class="text-[11px] italic text-muted-foreground/70">Koi instructions nahi</p>`}
         </div>
         <div class="mt-3 flex w-full items-center gap-1.5 border-t border-border pt-2.5">
+          <button type="button" class="btn btn-ghost btn-sm" data-act="memory" data-id="${a.id}">Memory (${(a.memory || []).length})</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="editstart" data-id="${a.id}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-act="delete" data-id="${a.id}">Delete</button>
         </div>
@@ -4779,6 +4923,8 @@ async function handleAgentsRowClick(e) {
     } finally {
       if (statusEl) statusEl.textContent = "";
     }
+  } else if (act === "memory") {
+    openAgentMemoryDialog(agentsState.agents.find((x) => x.id === id));
   } else if (act === "delete") {
     const a = agentsState.agents.find((x) => x.id === id);
     confirmDialog(`Delete agent "${a?.name || "this agent"}"?`, async () => {
@@ -4993,7 +5139,7 @@ function renderChatSettingsTiles(box, rows) {
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
                 Test routing
               </button>
-              <input id="routing-test-input" type="text" placeholder="e.g. denial N197 ka analysis do" class="input h-9 min-w-[220px] flex-1 rounded-lg px-3 py-1 text-xs">
+              <input id="routing-test-input" type="text" placeholder="e.g. denial N197 ka analysis do" class="input h-9 w-full min-w-0 flex-1 rounded-lg px-3 py-1 text-xs">
               <span id="routing-test-status" class="text-xs text-muted-foreground"></span>
             </div>
           </div>
@@ -6298,6 +6444,7 @@ function initApp() {
       closeDialog();
       closePalette();
       closePopovers();
+      document.body.classList.remove("sidebar-open");
     }
   });
 
