@@ -1484,18 +1484,26 @@ body.sidebar-open #sidebar-overlay {
   color: hsl(var(--primary));
   background: hsl(var(--muted));
 }
-#chat-sessions-col.sessions-collapsed {
-  width: 2.75rem;
-  flex: none;
-}
-#chat-sessions-col.sessions-collapsed .conversations-label,
-#chat-sessions-col.sessions-collapsed #chat-sessions {
-  display: none;
-}
-#chat-sessions-col.sessions-collapsed > div:first-child {
-  justify-content: center;
-  padding-left: 0;
-  padding-right: 0;
+/* The hide-to-icon-rail collapse is a DESKTOP pattern only. On phones the
+   two panels stack vertically, so the showcase button must never shrink the
+   sessions column to a 44px strip. */
+@media (min-width: 768px) {
+  #chat-sessions-col.sessions-collapsed {
+    width: 2.75rem;
+    flex: none;
+  }
+  #chat-sessions-col.sessions-collapsed .conversations-label,
+  #chat-sessions-col.sessions-collapsed #chat-sessions {
+    display: none;
+  }
+  #chat-sessions-col.sessions-collapsed > div:first-child {
+    justify-content: center;
+    padding-left: 0;
+    padding-right: 0;
+  }
+  #chat-sessions-col.sessions-collapsed #chat-clear-all-btn {
+    display: none;
+  }
 }
 .chat-flow-brand {
   position: relative;

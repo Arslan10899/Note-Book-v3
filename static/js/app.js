@@ -4128,10 +4128,15 @@ function showChatMain(show) {
 function toggleChatSessions() {
   const col = $("#chat-sessions-col");
   if (!col) return;
-  col.classList.toggle("sessions-collapsed");
-  if (col.classList.contains("sessions-collapsed")) {
-    col.style.display = "flex";
+  // On phones the panels stack (list above chat); "show/hide" toggle then
+  // behaves like the back button instead of shrinking the column to a rail.
+  if (window.innerWidth < 768) {
+    const showMain = col.style.display === "none";
+    showChatMain(showMain);
+    syncChatToggle();
+    return;
   }
+  col.classList.toggle("sessions-collapsed");
   syncChatToggle();
 }
 
