@@ -4703,34 +4703,28 @@ function agentMemoryKindBadge(kind) {
   return `<span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">${escapeHtml((k ? k.l : kind) || "fact")}</span>`;
 }
 
-function openAgentMemoryDialog(a) {
-  if (!a) return;
+function agentMemoryListHTML(a) {
   const rows = a.memory || [];
-  const listHtml = !rows.length
-    ? `<p class="text-sm italic text-muted-foreground">Abhi koi memory save nahi. Neeche form se ya Chat se save karein.</p>`
-    : `<div class="space-y-2">${rows.map((m) => `
-        <div class="flex items-start justify-between gap-2 rounded-lg border border-border/70 bg-background/40 p-2.5" data-mem-row="${m.id}">
-          <div class="min-w-0">
-            <div class="flex items-center gap-1.5">${agentMemoryKindBadge(m.kind)}<span class="truncate text-xs font-semibold">${escapeHtml(m.key || m.kind || "note")}</span></div>
-            <p class="mt-1 whitespace-pre-wrap break-words text-xs leading-relaxed text-foreground/80">${escapeHtml(m.content || "")}</p>
-            <p class="mt-1 text-[10px] text-muted-foreground">${escapeHtml(m.source || "manual")}${m.created_at ? " \u00b7 " + escapeHtml(String(m.created_at).slice(0, 10)) : ""}</p>
-          </div>
-          <div class="flex shrink-0 items-center gap-1">
-            <button type="button" class="btn btn-ghost btn-sm" data-mem-edit="${m.id}">Edit</button>
-            <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-mem-del="${m.id}">Delete</button>
-          </div>
-        </div>`).join("")}</div>`;
-
-  openDialog(`
-    <div class="flex items-start justify-between gap-3">
+  if (!rows.length) {
+    return `<p class="text-sm italic text-muted-foreground">Abhi koi memory save nahi. Neeche form se ya Chat se save karein.</p>`;
+  }
+  return `<div class="space-y-2">${rows.map((m) => `
+    <div class="flex items-start justify-between gap-3 rounded-lg border border-border/70 bg-background/40 p-3">
       <div class="min-w-0">
-        <h3 class="truncate text-base font-semibold">Memory \u2014 ${escapeHtml(a.name)}</h3>
-        <p class="mt-0.5 text-xs text-muted-foreground">Jo agent yaad rakhta hai; Chat se bhi save hota hai</p>
+        <div class="flex flex-wrap items-center gap-1.5">${agentMemoryKindBadge(m.kind)}<span class="text-xs font-semibold">${escapeHtml(m.key || m.kind || "note")}</span></div>
+        <p class="mt-1.5 whitespace-pre-wrap break-words text-[13px] leading-relaxed text-foreground/85">${escapeHtml(m.content || "")}</p>
+        <p class="mt-1.5 text-[10px] text-muted-foreground">${escapeHtml(m.source || "manual")}${m.created_at ? " \u00b7 " + escapeHtml(String(m.created_at).slice(0, 10)) : ""}</p>
       </div>
-      <button type="button" class="btn btn-ghost btn-sm shrink-0" data-close-dialog-panel aria-label="Close">\u2715</button>
-    </div>
-    <div class="mt-4 max-h-64 space-y-2 overflow-y-auto">${listHtml}</div>
-    <div class="mt-4 rounded-lg border border-border p-3">
+      <div class="flex shrink-0 items-center gap-1">
+        <button type="button" class="btn btn-ghost btn-sm" data-mem-edit="${m.id}">Edit</button>
+        <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-mem-del="${m.id}">Delete</button>
+      </div>
+    </div>`).join("")}</div>`;
+}
+
+function agentMemoryFormHTML() {
+  return `
+    <div class="rounded-lg border border-border p-3">
       <p class="mb-2 text-[11px] font-semibold uppercase tracking-wide text-muted-foreground" data-mem-form-title>Nayi memory</p>
       <div class="flex flex-wrap gap-2">
         <select data-mem-kind class="input h-9 min-w-[8.5rem] shrink-0">${AGENT_MEMORY_KINDS.map((k) => `<option value="${k.v}">${k.l}</option>`).join("")}</select>
@@ -4742,16 +4736,74 @@ function openAgentMemoryDialog(a) {
         <button type="button" class="btn btn-outline btn-sm hidden" data-mem-update-cancel>Cancel edit</button>
         <span class="text-xs text-muted-foreground" data-mem-status></span>
       </div>
-    </div>
-  `);
+    </div>`;
+}
 
-  const statusEl = $("#dialog-root").querySelector("[data-mem-status]");
-  const formTitle = $("#dialog-root").querySelector("[data-mem-form-title]");
-  const kindSel = $("#dialog-root").querySelector("[data-mem-kind]");
-  const keyIn = $("#dialog-root").querySelector("[data-mem-key]");
-  const contentTa = $("#dialog-root").querySelector("[data-mem-content]");
-  const saveBtn = $("#dialog-root").querySelector("[data-mem-save-new]");
-  const cancelEditBtn = $("#dialog-root").querySelector("[data-mem-update-cancel]");
+function bindAgentMemoryListActions(root, a) {
+  const saveBtn = root.querySelector("[data-mem-save-new]");
+  const cancelEditBtn = root.querySelector("[data-mem-update-cancel]");
+  const formTitle = root.querySelector("[data-mem-form-title]");
+  const kindSel = root.querySelector("[data-mem-kind]");
+  const keyIn = root.querySelector("[data-mem-key]");
+  const contentTa = root.querySelector("[data-mem-content]");
+  if (!saveBtn) return;
+  root.querySelectorAll("[data-mem-edit]").forEach((b) => {
+    b.addEventListener("click", () => {
+      const m = (a.memory || []).find((x) => x.id === Number(b.dataset.memEdit));
+      if (!m) return;
+      saveBtn.dataset.memUpdate = String(m.id);
+      saveBtn.textContent = "Update memory";
+      cancelEditBtn.classList.remove("hidden");
+      formTitle.textContent = "Memory edit";
+      kindSel.value = m.kind || "fact";
+      keyIn.value = m.key || "";
+      contentTa.value = m.content || "";
+    });
+  });
+  root.querySelectorAll("[data-mem-del]").forEach((b) => {
+    let timer;
+    b.addEventListener("click", async () => {
+      const mid = Number(b.dataset.memDel);
+      if (b.dataset.confirm !== "1") {
+        b.dataset.confirm = "1";
+        b.textContent = "Confirm?";
+        b.classList.add("text-destructive");
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          b.dataset.confirm = "";
+          b.textContent = "Delete";
+          b.classList.remove("text-destructive");
+        }, 2600);
+        return;
+      }
+      clearTimeout(timer);
+      try {
+        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
+        await loadAgents();
+        if (agentDetailsState.panelOpen) {
+          refreshPanelMemory();
+        } else {
+          const fresh = (agentsState.agents || []).find((x) => x.id === a.id);
+          openAgentMemoryDialog(fresh);
+        }
+        toast("Memory deleted", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+}
+
+function bindAgentMemory(root, a, opts = {}) {
+  const panel = !!opts.panel;
+  const statusEl = root.querySelector("[data-mem-status]");
+  const formTitle = root.querySelector("[data-mem-form-title]");
+  const kindSel = root.querySelector("[data-mem-kind]");
+  const keyIn = root.querySelector("[data-mem-key]");
+  const contentTa = root.querySelector("[data-mem-content]");
+  const saveBtn = root.querySelector("[data-mem-save-new]");
+  const cancelEditBtn = root.querySelector("[data-mem-update-cancel]");
+  if (!saveBtn) return;
 
   const resetForm = () => {
     saveBtn.dataset.memUpdate = "";
@@ -4763,34 +4815,6 @@ function openAgentMemoryDialog(a) {
     contentTa.value = "";
   };
 
-  $("#dialog-root").querySelector("[data-close-dialog-panel]").addEventListener("click", closeDialog);
-
-  $("#dialog-root").querySelectorAll("[data-mem-del]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const mid = Number(b.dataset.memDel);
-      confirmDialog("Is memory ko delete karein?", async () => {
-        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
-        await loadAgents();
-        const fresh = (agentsState.agents || []).find((x) => x.id === a.id);
-        if (fresh) openAgentMemoryDialog(fresh);
-        toast("Memory deleted", "success");
-      });
-    });
-  });
-  $("#dialog-root").querySelectorAll("[data-mem-edit]").forEach((b) => {
-    b.addEventListener("click", () => {
-      const mid = Number(b.dataset.memEdit);
-      const m = rows.find((x) => x.id === mid);
-      if (!m) return;
-      saveBtn.dataset.memUpdate = String(mid);
-      saveBtn.textContent = "Update memory";
-      cancelEditBtn.classList.remove("hidden");
-      formTitle.textContent = "Memory edit";
-      kindSel.value = m.kind || "fact";
-      keyIn.value = m.key || "";
-      contentTa.value = m.content || "";
-    });
-  });
   cancelEditBtn.addEventListener("click", resetForm);
   saveBtn.addEventListener("click", async () => {
     const kind = kindSel.value;
@@ -4809,14 +4833,209 @@ function openAgentMemoryDialog(a) {
         await api(`/api/agents/${a.id}/memory`, { method: "POST", body: JSON.stringify({ kind, key, content }) });
       }
       statusEl.textContent = "";
-      closeDialog();
       await loadAgents();
       toast(mid ? "Memory updated" : "Memory saved", "success");
+      if (panel) {
+        refreshPanelMemory();
+      } else {
+        closeDialog();
+      }
     } catch (err) {
       statusEl.textContent = "";
       toast(err.message, "error");
     }
   });
+  bindAgentMemoryListActions(root, a);
+}
+
+function openAgentMemoryDialog(a) {
+  if (!a) return;
+  openDialog(`
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="truncate text-base font-semibold">Memory \u2014 ${escapeHtml(a.name)}</h3>
+        <p class="mt-0.5 text-xs text-muted-foreground">Jo agent yaad rakhta hai; Chat se bhi save hota hai</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm shrink-0" data-close-dialog-panel aria-label="Close">\u2715</button>
+    </div>
+    <div class="mt-4 max-h-60 space-y-2 overflow-y-auto" data-mem-list>${agentMemoryListHTML(a)}</div>
+    <div class="mt-4">${agentMemoryFormHTML()}</div>
+  `);
+  $("#dialog-root").querySelector("[data-close-dialog-panel]").addEventListener("click", closeDialog);
+  bindAgentMemory($("#dialog-root"), a, { panel: false });
+}
+
+let agentDetailsState = { id: null, mode: "view", panelOpen: false };
+
+function refreshPanelMemory() {
+  const a = (agentsState.agents || []).find((x) => x.id === agentDetailsState.id);
+  const root = $("#dialog-root");
+  if (!a || !root.querySelector("[data-mem-list]")) return;
+  root.querySelector("[data-mem-list]").innerHTML = agentMemoryListHTML(a);
+  const countEl = root.querySelector("[data-mem-count]");
+  if (countEl) countEl.textContent = `(${(a.memory || []).length})`;
+  const totalEl = root.querySelector("[data-mem-total]");
+  if (totalEl) totalEl.textContent = `${(a.memory || []).length} memory${(a.memory || []).length === 1 ? "" : "ies"}`;
+  bindAgentMemoryListActions(root, a);
+}
+
+function renderAgentDetailsPanel() {
+  const a = (agentsState.agents || []).find((x) => x.id === agentDetailsState.id);
+  if (!a) {
+    closeDialog();
+    return;
+  }
+  const isEdit = agentDetailsState.mode === "edit";
+  const name = a.name || "";
+  const icon = a.icon || agentDefaultIcon(a) || "";
+  const initials = escapeHtml((name.slice(0, 1) || "?").toUpperCase());
+  const memCount = (a.memory || []).length;
+  const iconBig = icon ? pageIconHTML(icon, "h-7 w-7") : `<span class="text-lg font-bold">${initials}</span>`;
+  const iconHead = icon ? pageIconHTML(icon, "h-5 w-5") : `<span class="text-sm font-bold">${initials}</span>`;
+
+  const detailsHtml = isEdit ? `
+    <h3 class="text-sm font-semibold">Basic details</h3>
+    <div class="mt-3 flex items-center gap-3">
+      <button type="button" class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl border border-border bg-card/60 text-2xl transition-colors hover:border-primary/50" data-agd-icon title="Icon choose karein">${iconBig}</button>
+      <div class="min-w-0 flex-1">
+        <label class="mb-1 block text-[11px] font-medium text-muted-foreground">Name</label>
+        <input type="text" class="input h-9 w-full" data-agd-name maxlength="120" value="${escapeHtml(name)}" placeholder="Name" />
+      </div>
+    </div>
+    <input type="hidden" data-agd-icon-value value="${escapeHtml(a.icon || "")}" />
+    <div id="agd-icon-picker" class="mt-3 hidden rounded-lg border border-border p-3">${buildIconPickerHTML()}</div>
+    <div class="mt-3">
+      <label class="mb-1 block text-[11px] font-medium text-muted-foreground">Ye agent kya karta hai? (work / capacity)</label>
+      <textarea rows="2" class="input w-full resize-none" data-agd-desc maxlength="500" placeholder="Description">${escapeHtml(a.description || "")}</textarea>
+    </div>
+    <div class="mt-3">
+      <label class="mb-1 block text-[11px] font-medium text-muted-foreground">Qabliyat / Instructions</label>
+      <textarea rows="10" class="input w-full resize-y font-mono text-xs leading-relaxed" data-agd-prompt maxlength="4000" placeholder="Kaise behave aur answer kare?">${escapeHtml(a.system_prompt || "")}</textarea>
+      <p class="mt-1 text-[10px] text-muted-foreground">Name 120 \u00b7 Description 500 \u00b7 Instructions 4000 characters maximum.</p>
+    </div>` : `
+    <div class="flex items-center gap-3">
+      <div class="flex h-14 w-14 shrink-0 items-center justify-center rounded-xl bg-primary/10">${iconBig}</div>
+      <div class="min-w-0">
+        <h3 class="truncate text-base font-semibold">${escapeHtml(name)}</h3>
+        <p class="text-xs text-muted-foreground"><span data-mem-total>${memCount} memory${memCount === 1 ? "" : "ies"}</span></p>
+      </div>
+    </div>
+    <div class="mt-4 grid gap-4 lg:grid-cols-2">
+      <div>
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Kaam / Description</p>
+        <p class="mt-1.5 text-[13px] leading-relaxed text-foreground/85">${a.description ? escapeHtml(a.description) : '<span class="italic text-muted-foreground">Koi kaam/description nahi likhi</span>'}</p>
+      </div>
+      <div>
+        <p class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Qabliyat / Instructions</p>
+        <pre class="mt-1.5 max-h-72 overflow-auto whitespace-pre-wrap break-words rounded-lg border border-border/70 bg-background/40 p-3 text-[11px] leading-relaxed text-foreground/85">${escapeHtml(a.system_prompt || "Koi instructions nahi")}</pre>
+      </div>
+    </div>`;
+
+  $("#dialog-root").innerHTML = `
+    <div class="dialog-backdrop dialog-backdrop-full" data-close-dialog></div>
+    <div class="dialog-panel-full">
+      <header class="flex shrink-0 items-center gap-3 border-b border-border px-5 py-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">${iconHead}</div>
+        <div class="min-w-0">
+          <h2 class="truncate text-base font-semibold">${escapeHtml(name)}</h2>
+          <p class="truncate text-[11px] text-muted-foreground">Custom Agent${isEdit ? " \u2014 editing" : ""}</p>
+        </div>
+        <div class="ml-auto flex shrink-0 items-center gap-2">
+          ${isEdit ? "" : `<button type="button" class="btn btn-primary btn-sm" data-agd-edit>Edit details</button>`}
+          <button type="button" class="btn btn-ghost btn-sm" data-agd-back>${isEdit ? "Back to view" : "Close"}</button>
+        </div>
+      </header>
+      <div class="dialog-full-body px-4 py-4 sm:px-6">
+        <div class="dialog-full-body-inner">
+          <section class="rounded-xl border border-border/70 p-4">${detailsHtml}</section>
+          <section class="mt-4 rounded-xl border border-border/70 p-4">
+            <div class="flex items-center justify-between gap-2">
+              <h3 class="text-sm font-semibold">Memory <span class="font-normal text-muted-foreground" data-mem-count>(${memCount})</span></h3>
+            </div>
+            <p class="mt-0.5 text-[11px] text-muted-foreground">Jo agent yaad rakhta hai; Chat se bhi save hota hai.</p>
+            <div class="mt-3 space-y-2" data-mem-list>${agentMemoryListHTML(a)}</div>
+            <div class="mt-3">${agentMemoryFormHTML()}</div>
+          </section>
+        </div>
+      </div>
+      <footer class="flex shrink-0 items-center justify-end gap-2 border-t border-border px-5 py-3">
+        <button type="button" class="btn btn-outline btn-sm" data-agd-back2>Back</button>
+        ${isEdit ? `<button type="button" class="btn btn-primary btn-sm" data-agd-save>Save <span class="hidden sm:inline">changes</span></button>` : ""}
+      </footer>
+    </div>
+  `;
+
+  const root = $("#dialog-root");
+  root.querySelector("[data-close-dialog]").addEventListener("mousedown", closeDialog);
+  root.querySelectorAll("[data-agd-back], [data-agd-back2]").forEach((b) =>
+    b.addEventListener("click", () => {
+      if (agentDetailsState.mode === "edit") {
+        agentDetailsState.mode = "view";
+        renderAgentDetailsPanel();
+      } else {
+        agentDetailsState.panelOpen = false;
+        closeDialog();
+      }
+    })
+  );
+  root.querySelector("[data-agd-edit]")?.addEventListener("click", () => {
+    agentDetailsState.mode = "edit";
+    renderAgentDetailsPanel();
+  });
+
+  if (isEdit) {
+    let iconSel = a.icon || "";
+    const iconBtn = root.querySelector("[data-agd-icon]");
+    const iconVal = root.querySelector("[data-agd-icon-value]");
+    if (iconBtn) {
+      const picker = root.querySelector("#agd-icon-picker");
+      iconBtn.addEventListener("click", () => {
+        const wasHidden = picker.classList.contains("hidden");
+        picker.classList.toggle("hidden");
+        if (wasHidden && !picker.dataset.bound) {
+          picker.dataset.bound = "1";
+          bindIconPicker(picker, (em) => {
+            iconSel = em || "";
+            iconVal.value = iconSel;
+            iconBtn.innerHTML = em ? pageIconHTML(em, "h-7 w-7") : `<span class="text-lg font-bold">${initials}</span>`;
+            picker.classList.add("hidden");
+          });
+        }
+      });
+    }
+    root.querySelector("[data-agd-save]").addEventListener("click", async () => {
+      const nName = root.querySelector("[data-agd-name]").value.trim();
+      const nDesc = root.querySelector("[data-agd-desc]").value.trim();
+      const nPrompt = root.querySelector("[data-agd-prompt]").value.trim();
+      if (!nName) {
+        toast("Name is required", "error");
+        return;
+      }
+      const saveBtn = root.querySelector("[data-agd-save]");
+      saveBtn.disabled = true;
+      saveBtn.textContent = "Saving\u2026";
+      try {
+        await api(`/api/agents/${a.id}`, { method: "PUT", body: JSON.stringify({ name: nName, description: nDesc, system_prompt: nPrompt, icon: iconSel }) });
+        await loadAgents();
+        agentDetailsState.mode = "view";
+        renderAgentDetailsPanel();
+        toast("Agent updated", "success");
+      } catch (err) {
+        toast(err.message, "error");
+        saveBtn.disabled = false;
+        saveBtn.textContent = "Save changes";
+      }
+    });
+  }
+  bindAgentMemory(root, a, { panel: true });
+}
+
+function openAgentDetailsDialog(a, mode = "view") {
+  if (!a) return;
+  agentDetailsState.id = a.id;
+  agentDetailsState.mode = mode === "edit" ? "edit" : "view";
+  agentDetailsState.panelOpen = true;
+  renderAgentDetailsPanel();
 }
 
 function renderAgents() {
@@ -4869,26 +5088,10 @@ function renderAgents() {
             : `<p class="text-[11px] italic text-muted-foreground/70">Koi instructions nahi</p>`}
         </div>
         <div class="mt-3 flex w-full items-center gap-1.5 border-t border-border pt-2.5">
+          <button type="button" class="btn btn-ghost btn-sm" data-act="view" data-id="${a.id}">View</button>
           <button type="button" class="btn btn-ghost btn-sm" data-act="memory" data-id="${a.id}">Memory (${(a.memory || []).length})</button>
-          <button type="button" class="btn btn-ghost btn-sm" data-act="editstart" data-id="${a.id}">Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm" data-act="edit" data-id="${a.id}">Edit</button>
           <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-act="delete" data-id="${a.id}">Delete</button>
-        </div>
-        <div class="agent-edit mt-3 hidden space-y-2 rounded-lg border border-border p-3" data-edit-row="${a.id}">
-          <div class="flex items-center gap-3">
-            <button type="button" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-card/60 text-lg transition-colors hover:border-primary/50" data-act="pickicon" data-id="${a.id}" title="Icon choose karein">${a.icon ? pageIconHTML(a.icon, "h-5 w-5") : initials}</button>
-            <div class="min-w-0 flex-1">
-              <label class="mb-1 block text-[11px] font-medium text-muted-foreground">Name</label>
-              <input type="text" class="input h-9 w-full" data-edit="name" maxlength="120" value="${escapeHtml(a.name)}" placeholder="Name" />
-            </div>
-          </div>
-          <input type="hidden" data-edit="icon" value="${escapeHtml(a.icon || "")}" />
-          <textarea rows="2" class="input w-full resize-none" data-edit="desc" maxlength="500" placeholder="Ye agent kya karta hai? (work / capacity)">${escapeHtml(a.description || "")}</textarea>
-          <textarea rows="4" class="input w-full resize-y" data-edit="prompt" maxlength="4000" placeholder="Qabliyat / Instructions \u2014 kaise behave aur answer kare?">${escapeHtml(a.system_prompt || "")}</textarea>
-          <div class="flex items-center gap-2">
-            <button type="button" class="btn btn-primary btn-sm" data-act="save" data-id="${a.id}">Save</button>
-            <button type="button" class="btn btn-outline btn-sm" data-act="cancel" data-id="${a.id}">Cancel</button>
-            <span class="text-xs text-muted-foreground" data-edit-status></span>
-          </div>
         </div>
       </div>`;
   }).join("");
@@ -4927,38 +5130,10 @@ async function handleAgentsRowClick(e) {
     }
     return;
   }
-  const editRow = btn.closest("[data-agent-row]")?.querySelector("[data-edit-row]");
-  const statusEl = editRow?.querySelector("[data-edit-status]");
-  if (act === "editstart") {
-    if (editRow) editRow.classList.remove("hidden");
-  } else if (act === "cancel") {
-    if (editRow) editRow.classList.add("hidden");
-  } else if (act === "pickicon") {
-    openIconPickerDialog((em) => {
-      btn.innerHTML = em ? pageIconHTML(em, "h-5 w-5") : ((agent?.name || "?")[0] || "?").toUpperCase();
-      const holder = btn.closest("[data-agent-row]")?.querySelector('[data-edit="icon"]');
-      if (holder) holder.value = em || "";
-    });
-  } else if (act === "save") {
-    const name = editRow?.querySelector('[data-edit="name"]')?.value.trim() || "";
-    const desc = editRow?.querySelector('[data-edit="desc"]')?.value.trim() || "";
-    const prompt = editRow?.querySelector('[data-edit="prompt"]')?.value.trim() || "";
-    const icon = editRow?.querySelector('[data-edit="icon"]')?.value.trim() || "";
-    if (!name) {
-      toast("Name is required", "error");
-      return;
-    }
-    if (statusEl) statusEl.textContent = "Saving\u2026";
-    try {
-      await api(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify({ name, description: desc, system_prompt: prompt, icon }) });
-      if (editRow) editRow.classList.add("hidden");
-      await loadAgents();
-      toast("Agent updated", "success");
-    } catch (err) {
-      toast(err.message, "error");
-    } finally {
-      if (statusEl) statusEl.textContent = "";
-    }
+  if (act === "view") {
+    openAgentDetailsDialog(agentsState.agents.find((x) => x.id === id), "view");
+  } else if (act === "edit") {
+    openAgentDetailsDialog(agentsState.agents.find((x) => x.id === id), "edit");
   } else if (act === "memory") {
     openAgentMemoryDialog(agentsState.agents.find((x) => x.id === id));
   } else if (act === "delete") {

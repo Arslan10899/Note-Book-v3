@@ -594,6 +594,32 @@ input[type="color"] {
   padding: 1.25rem;
 }
 
+/* Full-screen detail editor (agents etc.) — uses the whole viewport */
+.dialog-backdrop-full { background: rgb(7 10 20 / .55); }
+
+.dialog-panel-full {
+  position: fixed;
+  inset: 0;
+  z-index: 91;
+  width: 100vw;
+  height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background: hsl(var(--card));
+  color: hsl(var(--card-foreground));
+  animation: fadeIn .18s ease;
+}
+
+.dialog-panel-full .dialog-full-body {
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+}
+
+.dialog-full-body-inner { width: 100%; margin: 0 auto; max-width: 54rem; }
+
 @keyframes fadeIn {
   from { opacity: 0; }
 }
