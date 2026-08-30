@@ -10,6 +10,7 @@ import sqlite3
 import tempfile
 import time
 import urllib.error
+import urllib.parse
 import urllib.request
 import uuid
 import base64
@@ -562,6 +563,19 @@ CREATE INDEX IF NOT EXISTS idx_knowledge_updated ON knowledge_base(updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_sessions_user ON chat_sessions(user_id, updated_at);
 CREATE INDEX IF NOT EXISTS idx_chat_messages_session ON chat_messages(session_id, id);
 CREATE INDEX IF NOT EXISTS idx_chat_settings_enabled ON chat_settings(enabled);
+CREATE TABLE IF NOT EXISTS agent_audit (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    agent_name TEXT NOT NULL DEFAULT '',
+    action TEXT NOT NULL DEFAULT '',
+    kind TEXT NOT NULL DEFAULT '',
+    query TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'ok',
+    error TEXT NOT NULL DEFAULT '',
+    details TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit(created_at);
+CREATE INDEX IF NOT EXISTS idx_agent_audit_agent ON agent_audit(agent_name);
 """
 
 
@@ -684,9 +698,108 @@ def migrate_db():
             );
             """
         )
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS agent_audit (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                agent_name TEXT NOT NULL DEFAULT '',
+                action TEXT NOT NULL DEFAULT '',
+                kind TEXT NOT NULL DEFAULT '',
+                query TEXT NOT NULL DEFAULT '',
+                status TEXT NOT NULL DEFAULT 'ok',
+                error TEXT NOT NULL DEFAULT '',
+                details TEXT NOT NULL DEFAULT '',
+                created_at TEXT NOT NULL DEFAULT ''
+            );
+            """
+        )
+        conn.executescript(
+            """
+            CREATE INDEX IF NOT EXISTS idx_agent_audit_created ON agent_audit(created_at);
+            CREATE INDEX IF NOT EXISTS idx_agent_audit_agent ON agent_audit(agent_name);
+            """
+        )
+        _seed_aazaz(conn)
         conn.commit()
     finally:
         conn.close()
+
+
+_AAZAZ_NAME = "Aazaz Ahmed"
+_AAZAZ_ICON = "lucide:briefcase-business"
+_AAZAZ_DESCRIPTION = (
+    "Executive Operations & System QC Auditor - Excel/Word/PDF/text files banata, padhta, update aur "
+    "delete karta hai; har agent ki performance/quality audit (scorecard) report deta hai."
+)
+_AAZAZ_SYSTEM_PROMPT = (
+    "Aap Aazaz Ahmed hain - Executive Operations Assistant aur System QC Auditor.\n\n"
+    "FILE ENGINE (multi-format):\n"
+    "- Aap files banate/padhte/update/delete karte ho: Excel (.xlsx), Word (.docx), PDF, text (.txt/.md/.log), "
+    "aur corporate email drafts (.md).\n"
+    "- Path hamesha ABSOLUTE aur exact hona chahiye (C:\\Users\\... ya /home/...). Kabhi path guess/banata "
+    "nahi - user se exact path poochte ho.\n"
+    "- Overwrite/delete sirf user ki EXPLICIT confirmation ke baad. Windows/system files (.exe, DLL, System32, "
+    ".ssh, keystore) kabhi modify nahi karte.\n"
+    "- Har file response me absolute path + size/summary zaroor batate ho.\n\n"
+    "QC / AUDIT ENGINE:\n"
+    "- Aap poore system ki audit report banate ho: har agent ke actions, error counts, pending review queue "
+    "aur memory hold-up.\n"
+    "- Report structured Markdown 'scorecard' hoti hai: PASS / WARNING / FAIL + findings + concrete "
+    "recommendations.\n\n"
+    "EMAIL:\n"
+    "- Corporate email/reminder draft (.md/.txt) banate ho: subject, greeting, body (action points), "
+    "structured sign-off. Tone professional aur concise.\n\n"
+    "Reply Roman-Urdu/English mix me, seedha aur actionable."
+)
+
+_AAZAZ_SEED_MEMORY = (
+    ("fact", "full_name", "Aazaz Ahmed - Executive Ops & QC Auditor."),
+    ("instruction", "path_rule", "Always use exact ABSOLUTE file paths; never guess — ask the user."),
+    ("instruction", "write_safety", "Overwrite/delete only after explicit user confirmation; never touch OS/system files."),
+    ("preference", "report_style", "QC reports = structured Markdown scorecard with PASS/WARNING/FAIL + recommendations."),
+)
+
+
+def _seed_aazaz(conn):
+    """Idempotent: creates the Aazaz Ahmed agent row + baseline memory only if absent."""
+    try:
+        row = conn.execute("SELECT id FROM chat_agents WHERE name = ?", (_AAZAZ_NAME,)).fetchone()
+    except Exception:
+        return
+    stamp = now_stamp()
+    if row is None:
+        try:
+            cur = conn.execute(
+                "INSERT INTO chat_agents (name, description, system_prompt, icon, is_active, created_at) "
+                "VALUES (?, ?, ?, ?, 0, ?)",
+                (_AAZAZ_NAME, _AAZAZ_DESCRIPTION, _AAZAZ_SYSTEM_PROMPT, _AAZAZ_ICON, stamp),
+            )
+            aid = cur.lastrowid
+        except Exception as e:
+            logger.warning("aazaz seed failed: %s", e)
+            return
+    else:
+        aid = row[0]
+    try:
+        have = {
+            r[0]
+            for r in conn.execute(
+                "SELECT key FROM agent_memory WHERE agent_id = ?", (aid,)
+            ).fetchall()
+        }
+    except Exception:
+        return
+    for kind, key, content in _AAZAZ_SEED_MEMORY:
+        if key in have:
+            continue
+        try:
+            conn.execute(
+                "INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, 'seed', 'system', ?, ?)",
+                (aid, kind, key, content, stamp, stamp),
+            )
+        except Exception:
+            continue
 
 
 def init_db():
@@ -1964,7 +2077,7 @@ _AGENT_DECISION_SYSTEM = (
     "COUNT/SUM summary for counts).\n"
     "  The query MUST be read-only (SELECT only) "
     "  against these app tables ONLY: tasks, notes, pages, routines, knowledge_base, chat_sessions, "
-    "  chat_messages, chat_agents, api_tools, agent_memory. No writes, no pragma, no other tables. "
+    "  chat_messages, chat_agents, api_tools, agent_memory, agent_audit. No writes, no pragma, no other tables. "
     "  Example: {\"action\":\"sql\",\"query\":\"SELECT title, priority FROM tasks WHERE done=0 ORDER BY id\"}.\n"
     "  STAFF DIRECTORY RULE: all staff contact details, emails and directories are stored as TEXT "
     "  inside the content column of the PAGES and NOTES tables. You must NEVER attempt to query the "
@@ -1983,6 +2096,17 @@ _AGENT_DECISION_SYSTEM = (
     "{\"action\":\"sql\",\"query\":\"UPDATE agent_memory SET content='English' WHERE key='preferred_language' "
     "AND agent_id=(SELECT id FROM chat_agents WHERE name='Asmar')\"}.\n"
     "  Never write to any other table. Memory writes pass through the Review Agent like other actions.\n"
+    '{"action":"file","file":{"op":"create|read|update|delete|list","path":"<ABSOLUTE path>",' +
+    '"content":"...","rows":[[...]],"sheet":"Sheet1","mode":"append","overwrite":true}}\n'
+    "  Use when the user wants a FILE/DOCUMENT made, edited, read, or a folder listed "
+    "(excel .xlsx, word .docx, pdf, txt/md/log notes, corporate email drafts). "
+    "  create: absolute path + content (text) or rows/header/sheet (Excel). "
+    "  read: absolute path -> summary + content preview. "
+    "  update: absolute path + content/rows -> append/extend the existing file. "
+    "  delete: absolute path + overdue overwrite:true ONLY after the user EXPLICITLY says to delete it. "
+    "  overwrite:true is ONLY allowed when the user explicitly says to replace/delete an existing file. "
+    "  ALWAYS use the exact absolute path the user gives — never invent or guess a path; if it is "
+    "  missing or unclear, reply {\"action\":\"file\",\"file\":{\"op\":\"read\",\"path\":\"\"}}.\n"
     '{"action":"fetch","tool_id":<id>,"params":{...}}\n'
     "  ONLY to call the external APIs listed in the Available tools section below; fill the "
     "{placeholder} params of its URL template via \"params\". Never call any other URL.\n"
@@ -2044,6 +2168,25 @@ def _normalize_agent_plan(obj):
             params = {}
         return {"action": "fetch", "kind": "api", "tool_id": tool_id, "params": dict(params),
                 "query": "", "title": "", "fields": {}, "numbers": [], "titles": []}
+    if action == "file":
+        fi = obj.get("file")
+        if not isinstance(fi, dict) or not fi:
+            return None
+        op = str(fi.get("op") or obj.get("op") or "").strip().lower()
+        if op not in ("create", "read", "update", "delete", "list"):
+            return None
+        out_fi = {"op": op}
+        for k in ("path", "content", "overwrite", "sheet", "rows", "header", "mode", "title"):
+            if k in fi:
+                out_fi[k] = fi[k]
+        if fi.get("path"):
+            out_fi["path"] = str(fi["path"])
+        if fi.get("content") is not None:
+            out_fi["content"] = str(fi["content"])
+        if isinstance(out_fi.get("rows"), list):
+            out_fi["rows"] = [list(r) for r in out_fi["rows"] if isinstance(r, list)]
+        return {"action": "file", "kind": "file", "file": out_fi,
+                "id": None, "title": "", "fields": {}, "numbers": [], "titles": []}
     if action not in ("create", "update", "delete") or kind not in AGENT_KINDS:
         return None
     fields = obj.get("fields") or {}
@@ -2544,7 +2687,7 @@ def _mark_tasks_done(decision):
 _SAFE_SQL_TABLES = (
     "tasks", "notes", "pages", "routines", "routine_completions", "knowledge_base",
     "chat_sessions", "chat_messages", "chat_agents", "api_tools", "note_shares",
-    "agent_memory",
+    "agent_memory", "agent_audit",
 )
 _SQL_DENY_RE = re.compile(
     r"\b(insert|update|delete|drop|alter|create|attach|detach|reindex|vacuum|replace|truncate|"
@@ -2842,7 +2985,360 @@ def _safe_fetch(tool_id, params=None):
     return "Raw response:\n```json\n" + snippet + "\n```", True
 
 
-def _run_agent_action(decision, question="", wrap_result=True):
+# ---- Aazaz Ahmed: multi-format file engine (Excel / Word / PDF / text / email) ----
+# Reads run real-time; writes/delete pass through the same Maker-Checker review as
+# every other agent action. Paths are ALWAYS absolute and sanitized; traversals,
+# control characters and system files are rejected before touching the disk.
+
+_FILE_TEXT_EXTS = (".txt", ".md", ".log", ".csv", ".json", ".tex", ".ini", ".cfg", ".yaml", ".yml", ".html")
+_FILE_BINARY_EXTS = (
+    ".pdf", ".png", ".jpg", ".jpeg", ".gif", ".bmp", ".ico", ".xls", ".zip", ".rar", ".7z",
+    ".gz", ".exe", ".dll", ".sys", ".msi", ".db", ".sqlite", ".sqlite3", ".pyc", ".ogg",
+    ".mp3", ".mp4", ".avi", ".mkv", ".mov",
+)
+_FILE_UNSAFE_PARENT = ("\\windows\\", "program files", "system32", "\\windows ", "windows\\.ssh", "\\.ssh\\", "\\appdata\\localsys")
+_FILE_BINARY_DELETE_EXTS = (".exe", ".dll", ".sys", ".msi", ".db", ".sqlite", ".sqlite3", ".pyc")
+
+
+def _sanitize_fs_path(raw):
+    """Validate + normalize an absolute filesystem path. Raises ValueError otherwise."""
+    raw = (raw or "").strip().strip('"').strip("'").strip()
+    if not raw:
+        raise ValueError("File path khali hai — exact ABSOLUTE path bataiye (e.g. C:\\Users\\You\\Desktop\\file.xlsx ya /home/NoteBook2/file.txt).")
+    if "\x00" in raw:
+        raise ValueError("Path me invalid character (null byte) hai.")
+    if any(ord(ch) < 32 for ch in raw):
+        raise ValueError("Path me control character hai.")
+    if not os.path.isabs(raw):
+        raise ValueError(f"Sirf ABSOLUTE paths allowed hain — '{raw}' relative hai, poora path dijiye.")
+    if any(p == ".." for p in re.split(r"[\\/]", raw)):
+        raise ValueError("Path me traversal ('..') allowed nahi — sahi absolute path dijiye.")
+    norm = os.path.normpath(raw)
+    norm = os.path.abspath(norm)
+    parts = norm.replace("\\", "/").split("/")
+    if ".." in parts:
+        raise ValueError("Path me traversal ('..') allowed nahi — sahi absolute path dijiye.")
+    name = os.path.basename(norm)
+    if not name:
+        raise ValueError("Path me file ka naam nahi diya gaya.")
+    if any(c in name for c in '<>:"/\\|?*'):
+        raise ValueError("Filename me illegal characters hain (< > : \" / \\ | ? *).")
+    return norm
+
+
+def _path_label(path):
+    try:
+        st = os.stat(path)
+        sz = st.st_size
+        mtime = time.strftime("%Y-%m-%d %H:%M", time.localtime(st.st_mtime))
+    except OSError:
+        sz, mtime = None, ""
+    size_txt = f"{sz:,} bytes" if sz is not None else "size unknown"
+    return f"`{path}`\n- Size: **{size_txt}**\n- Modified: **{mtime or 'unknown'}**"
+
+
+def _is_text_format(path):
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _FILE_BINARY_EXTS:
+        return False
+    if ext in _FILE_TEXT_EXTS:
+        return True
+    return True  # default to text for ordinary extensions
+
+
+def _deletable(path):
+    low = (" " + path.lower() + " ").replace("\\", "/")
+    for skip in ("/windows/", "program files", "system32", "/.ssh/", "//appdata//"):
+        if skip in low:
+            return False
+    ext = os.path.splitext(path)[1].lower()
+    if ext in _FILE_BINARY_DELETE_EXTS:
+        return False
+    return True
+
+
+def _file_badge(path):
+    url = "/api/agents/files/download?p=" + urllib.parse.quote(path, safe="")
+    return "\n\n__filebadge__" + urllib.parse.quote(path, safe="") + "__" + url + "__"
+
+
+def _parse_table_text(content):
+    """Best-effort pipe/TSV table -> list of rows (list of lists)."""
+    if not content:
+        return []
+    rows = []
+    for line in str(content).splitlines():
+        line = line.strip()
+        if not line or line.lstrip().startswith(("#", "|", "-")) and not line.startswith("|"):
+            continue
+        sep = line[1:] if line.startswith("|") else line
+        sep = sep.rstrip("|")
+        cells = [c.strip() for c in sep.split("|")]
+        if cells and any(cells):
+            rows.append(cells)
+    return rows
+
+
+def _write_text_file(path, fi, overwrite):
+    content = str(fi.get("content") or "")
+    mode = str(fi.get("mode") or "").strip().lower()
+    if os.path.exists(path) and mode in ("append", "add"):
+        with open(path, "a", encoding="utf-8") as fh:
+            fh.write(("\n" if content.startswith("\n") or not content else "") + content + "\n")
+    else:
+        with open(path, "w", encoding="utf-8") as fh:
+            fh.write(content)
+    return None
+
+
+def _write_xlsx_file(path, fi, overwrite):
+    from openpyxl import Workbook, load_workbook
+    from openpyxl.styles import Font
+    rows = fi.get("rows")
+    if not isinstance(rows, list):
+        rows = _parse_table_text(fi.get("content"))
+    sheet_name = str(fi.get("sheet") or "Sheet1")[:31]
+    header_row = fi.get("header") if isinstance(fi.get("header"), list) else fi.get("header")
+    mode = str(fi.get("mode") or "").strip().lower()
+    if os.path.exists(path) and mode in ("append", "add"):
+        wb = load_workbook(path)
+        ws = wb[sheet_name] if sheet_name in wb.sheetnames else wb.create_sheet(sheet_name)
+        if rows:
+            for row in rows:
+                ws.append(list(row))
+    else:
+        wb = Workbook()
+        ws = wb.active
+        ws.title = sheet_name
+        if header_row:
+            ws.append(list(header_row))
+        if rows:
+            for row in rows:
+                ws.append(list(row))
+        if header_row:
+            for j in range(1, len(header_row) + 1):
+                ws.cell(row=1, column=j).font = Font(bold=True)
+    wb.save(path)
+
+
+def _write_docx_file(path, fi, overwrite):
+    from docx import Document
+    content = str(fi.get("content") or "")
+    mode = str(fi.get("mode") or "").strip().lower()
+    if os.path.exists(path) and mode in ("append", "add"):
+        doc = Document(path)
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            doc.add_paragraph(line.strip())
+    else:
+        doc = Document()
+        for line in content.splitlines():
+            if not line.strip():
+                continue
+            if line.startswith("# "):
+                doc.add_heading(line[2:].strip(), level=1)
+            elif line.startswith("## "):
+                doc.add_heading(line[3:].strip(), level=2)
+            elif line.startswith("### "):
+                doc.add_heading(line[4:].strip(), level=3)
+            else:
+                doc.add_paragraph(line.strip())
+    doc.save(path)
+
+
+def _write_pdf_file(path, fi, overwrite):
+    from reportlab.lib.pagesizes import A4
+    from reportlab.lib.styles import getSampleStyleSheet
+    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    content = str(fi.get("content") or "")
+    styles = getSampleStyleSheet()
+    story = []
+    for line in content.splitlines():
+        if not line.strip():
+            story.append(Spacer(1, 8))
+            continue
+        if line.startswith("# "):
+            story.append(Paragraph(line[2:].strip(), styles["Heading1"]))
+        elif line.startswith("## "):
+            story.append(Paragraph(line[3:].strip(), styles["Heading2"]))
+        elif line.startswith("- "):
+            story.append(Paragraph("\u2022 " + line[2:].strip(), styles["BodyText"]))
+        else:
+            story.append(Paragraph(line.strip(), styles["BodyText"]))
+    SimpleDocTemplate(path, pagesize=A4).build(story)
+
+
+def _write_file(path, fi, overwrite):
+    if os.path.isdir(path):
+        raise ValueError("Ye ek directory hai, file nahi — sahi file path dijiye.")
+    ext = os.path.splitext(path)[1].lower()
+    if ext == ".xlsx":
+        _write_xlsx_file(path, fi, overwrite)
+    elif ext == ".docx":
+        _write_docx_file(path, fi, overwrite)
+    elif ext == ".pdf":
+        _write_pdf_file(path, fi, overwrite)
+    else:
+        if not _is_text_format(path) and os.path.exists(path):
+            raise ValueError("Ye binary format text-write ke liye allow nahi hai.")
+        _write_text_file(path, fi, overwrite)
+    st = os.stat(path)
+    kind_txt = {"xlsx": "Excel", "docx": "Word", "pdf": "PDF"}.get(ext.lstrip("."), "text")
+    return f"**{kind_txt} file ready**\n\n{_path_label(path)}"
+
+
+def _read_file_display(path):
+    ext = os.path.splitext(path)[1].lower()
+    meta = _path_label(path)
+    try:
+        if ext == ".xlsx":
+            from openpyxl import load_workbook
+            wb = load_workbook(path, read_only=True)
+            parts = [f"**{ws.title}** ({ws.max_row} rows x {ws.max_column} cols)" for ws in wb.worksheets]
+            body = ""
+            ws = wb.worksheets[0]
+            for i, row in enumerate(ws.iter_rows(values_only=True)):
+                if i >= 12:
+                    break
+                cells = ["" if v is None else str(v) for v in row]
+                body += "| " + " | ".join(c[:40] for c in cells) + " |\n"
+            wb.close()
+            return f"{meta}\n\n" + "\n".join(parts) + "\n\n" + body
+        if ext == ".docx":
+            from docx import Document
+            doc = Document(path)
+            paras = [p.text for p in doc.paragraphs if p.text.strip()][:40]
+            return f"{meta}\n\n" + "\n".join(paras[:24])
+        if ext == ".pdf":
+            from pypdf import PdfReader
+            reader = PdfReader(path)
+            text = ""
+            for page in reader.pages[:5]:
+                text += (page.extract_text() or "")[:1200] + "\n"
+            return f"{meta}\n\n```\n{text[:4000]}\n```"
+        if not _is_text_format(path):
+            return meta + "\n\n_(Binary file — sirf metadata dikhaya gaya.)_"
+        with open(path, "r", encoding="utf-8", errors="replace") as fh:
+            data = fh.read()
+        if len(data) > 6000:
+            snippet = data[:5000] + "\n...[truncated]...\n" + data[-800:]
+        else:
+            snippet = data
+        return f"{meta}\n\n```\n{snippet}\n```"
+    except Exception as e:
+        raise ValueError("File padhte waqt error: " + str(e))
+
+
+def _file_list_summary(raw):
+    try:
+        d = _sanitize_fs_path(raw)
+    except ValueError:
+        d = (raw or "").strip().strip('"').strip("'").strip()
+    if not os.path.isdir(d):
+        raise ValueError(f"Directory nahi mili: {d}")
+    entries = []
+    for name in sorted(os.listdir(d)):
+        full = os.path.join(d, name)
+        try:
+            if os.path.isdir(full):
+                entries.append("📁 " + name)
+            else:
+                entries.append(f"📄 {name}  ({os.stat(full).st_size:,} B)")
+        except OSError:
+            continue
+    shown = entries[:40]
+    head = f"**Directory:** `{d}`\n\n" + ("\n".join(shown) if shown else "_Khaali directory._")
+    if len(entries) > 40:
+        head += f"\n\n_(Total {len(entries)} entries, pehli 40 dikhai gayi.)_"
+    return head
+
+
+def _run_file_action(decision):
+    """Execute a validated file op (create|read|update|delete|list). Returns markdown text."""
+    fi = decision.get("file")
+    if not isinstance(fi, dict):
+        fi = {}
+    op = str(fi.get("op") or "create").strip().lower()
+    if op not in ("create", "read", "update", "delete", "list"):
+        raise ValueError(f"file op '{op}' support nahi hota (create|read|update|delete|list).")
+    if op == "list":
+        return _file_list_summary(fi.get("path"))
+    path = _sanitize_fs_path(fi.get("path"))
+    label = os.path.basename(path)
+    overwrite = fi.get("overwrite") in (True, 1, "1", "true", "yes")
+    if op == "read":
+        if not os.path.isfile(path):
+            raise ValueError(f"File nahi mili: `{path}`.")
+        return _read_file_display(path)
+    if op == "create":
+        if os.path.exists(path) and not overwrite:
+            raise ValueError(f"File pehle se maujood hai: `{path}`. Change/data add karna ho to 'update' use karein; replace karna ho to explicit 'overwrite: true' bhejein.")
+        return _write_file(path, fi, True) + _file_badge(path)
+    if op == "update":
+        if not os.path.exists(path):
+            raise ValueError(f"File nahi mili update ke liye: `{path}`.")
+        if not _is_text_format(path) and os.path.splitext(path)[1].lower() not in (".xlsx", ".docx"):
+            raise ValueError("Update sirf text-logic files (.txt .md .log .csv .xlsx .docx) par allowed hai.")
+        return _write_file(path, fi, False) + _file_badge(path)
+    # delete
+    if not os.path.exists(path):
+        raise ValueError(f"File delete karne ke liye mili nahi: `{path}`.")
+    if not overwrite:
+        raise ValueError(f"Delete ke liye explicit confirmation chahiye — overwrite:true bhejein (ya 'haan, delete kar do').")
+    if not _deletable(path):
+        raise ValueError("Ye file delete allowed nahi hai (system/sensitive area).")
+    os.remove(path)
+    return f"**File delete ho gayi:** `{path}`"
+
+
+def _audit_entry(agent_name="", action="", kind="", query="", status="ok", error="", details=""):
+    """Append one row to agent_audit (best-effort — never breaks an action)."""
+    try:
+        conn = get_db()
+        try:
+            conn.execute(
+                "INSERT INTO agent_audit (agent_name, action, kind, query, status, error, details, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (str(agent_name or "")[:60], str(action or "")[:40], str(kind or "")[:40],
+                 str(query or "")[:400], str(status or "ok")[:10], str(error or "")[:400],
+                 str(details or "")[:600], now_stamp()),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception as e:  # noqa: BLE001
+        logger.warning("agent_audit write failed: %s", e)
+
+
+def _run_agent_action(decision, question="", wrap_result=True, agent_name=""):
+    """Execute a validated agent action against the app DB or file system, and log
+    every executed tool call into agent_audit (QC/Audit source). Returns markdown text."""
+    action = decision["action"]
+    kind = str(decision.get("kind") or "")
+    if action == "file":
+        fi = decision.get("file") or {}
+        query = str(fi.get("path") or fi.get("op") or "")
+        try:
+            text = _run_file_action(decision)
+            _audit_entry(agent_name, "file", str(fi.get("op") or "create"), query, "ok")
+            return text
+        except ValueError as e:
+            _audit_entry(agent_name, "file", str(fi.get("op") or "create"), query, "error", str(e))
+            raise
+    try:
+        text = _run_agent_action_core(decision, question=question, wrap_result=wrap_result)
+    except ValueError as e:
+        _audit_entry(agent_name, action, kind, decision.get("query") or decision.get("title") or "", "error", str(e))
+        raise
+    if action in ("sql", "fetch"):
+        _audit_entry(agent_name, action, kind, decision.get("query") or "", "ok")
+    elif action in ("create", "update", "delete"):
+        _audit_entry(agent_name, action, kind, decision.get("title") or decision.get("id") or "", "ok")
+    return text
+
+
+def _run_agent_action_core(decision, question="", wrap_result=True):
     """Execute a validated action (create/update/delete/list/done/sql/fetch) against the app DB. Returns markdown text."""
     action = decision["action"]
     kind = decision["kind"]
@@ -3211,7 +3707,7 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
             replying = _agent_router(question, _active_agents(), sid=sid)
             _clear_pending(sid)
             try:
-                text = _run_agent_action(plan, question)
+                text = _run_agent_action(plan, question, agent_name=(replying.get("name") or "") if replying else "")
                 return _append_answer_footer(text, replying or None, "agent_action"), "agent_action", "action"
             except ValueError as e:
                 if _sql_tool_refused(e):
@@ -3259,7 +3755,7 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
         return _ask_for_missing(plan["kind"], missing), "agent_ask", "ask"
     _clear_pending(sid)
 
-    if _agent_mode_enabled() and plan["action"] in ("create", "update", "delete", "sql", "fetch"):
+    if _agent_mode_enabled() and plan["action"] in ("create", "update", "delete", "sql", "fetch", "file"):
         plan, rstatus = _maker_checker_plan(replying, provider, question, plan, attachments=attachments)
         if rstatus == "manual":
             reviewer = _reviewer_agent(replying, question)
@@ -3274,7 +3770,7 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
             )
 
     try:
-        text = _run_agent_action(plan, question, wrap_result=False)
+        text = _run_agent_action(plan, question, wrap_result=False, agent_name=(replying.get("name") or "") if replying else "")
         if plan["action"] in ("sql", "fetch"):
             rendered = _render_tool_output(provider, plan, text, agent_prompt, question, sid=sid, attachments=attachments)
             if rendered:
@@ -3469,6 +3965,129 @@ def _domain_expert_route(question, actives):
         if expert and any(a["id"] == expert["id"] for a in actives):
             return expert
     return None
+
+
+# ---- Aazaz Ahmed: QC / audit routing + report engine -------------------------
+# File-work requests and system QC audits belong to the Executive Ops / Auditor
+# agent (Aazaz). Domain experts (billing/data-entry/...) are tried first so their
+# work is never stolen; this hook only claims clearly file/QC-shaped intents.
+
+_QC_FILE_MARKERS = (
+    "audit", "quality check", "performance report", "qc karo", "qc report",
+    "excel bana", "bana de excel", "excel ban", "spreadsheet ban", "xlsx ban",
+    "xlsx bana", "xlsx khol", "excel khol", "excel banao", "xlsx me",
+    "docx bana", "word ban", "word bana", "pdf ban", "pdf bana",
+    "txt file ban", "md file ban", "log file ban", "email draft", "draft bana",
+    "file banao", "file ban", "file bana", "file padho", "file parho",
+    "file read", "file khol", "file likh", "file delete", "file update",
+    "excel dekh", "xlsx dekh", "saal ki files", "audit karo",
+)
+
+
+def _qc_agent(actives=None):
+    active = actives if actives is not None else _active_agents()
+    for a in active:
+        blob = " " + (a.get("name") or "").lower() + " " + (a.get("description") or "").lower() + " "
+        if "aazaz" in blob or "azaz" in blob:
+            return a
+        if ("qd auditor" in blob) or ("qc auditor" in blob) or ("auditor" in blob and "qc" in blob):
+            return a
+    return None
+
+
+def _qc_file_intent(question):
+    q = " " + (question or "").lower() + " "
+    return any(m in q for m in _QC_FILE_MARKERS)
+
+
+def _run_qc_report(limit=120):
+    """Deterministic multi-agent QC scorecard from agent_audit + pending + memory.
+    Works fully offline (no model needed). Returns a Markdown report string."""
+    conn = get_db()
+    try:
+        total = conn.execute("SELECT COUNT(*) AS c FROM agent_audit").fetchone()["c"]
+        errors = conn.execute("SELECT COUNT(*) AS c FROM agent_audit WHERE status = 'error'").fetchone()["c"]
+        per = conn.execute(
+            "SELECT agent_name, action, status, COUNT(*) AS n FROM agent_audit "
+            "WHERE agent_name <> '' GROUP BY agent_name, action, status ORDER BY n DESC LIMIT 40"
+        ).fetchall()
+        recent = conn.execute(
+            "SELECT agent_name, action, kind, status, error, created_at FROM agent_audit "
+            "ORDER BY id DESC LIMIT 6"
+        ).fetchall()
+        pending = conn.execute("SELECT COUNT(*) AS c FROM agent_pending").fetchone()["c"]
+        agents = conn.execute(
+            "SELECT a.id, a.name, a.is_active, "
+            "(SELECT COUNT(*) FROM agent_memory m WHERE m.agent_id = a.id) AS mem FROM chat_agents a ORDER BY a.id"
+        ).fetchall()
+        by_agent = {}
+        for r in per:
+            key = (r["agent_name"] or "") or "unknown"
+            d = by_agent.setdefault(key, {"actions": 0, "errors": 0, "parts": []})
+            d["actions"] += r["n"]
+            if r["status"] == "error":
+                d["errors"] += r["n"]
+            d["parts"].append(f"{r['action']} {r['status']} x{r['n']}")
+    finally:
+        conn.close()
+
+    lines = []
+    lines.append("# System QC Audit \u2014 multi-agent scorecard")
+    lines.append("")
+    lines.append(f"**Kul tool actions:** {total}  |  **Errors:** {errors}  |  **Pending reviews:** {pending}")
+    if errors and total:
+        lines.append(f"**Overall error rate:** {100.0 * errors / total:.1f}%")
+    lines.append("")
+    if not by_agent:
+        lines.append("_Abhi tak koi agent action execute nahi hua (agent_audit khali hai). Pehle kuch actions chalao._")
+    else:
+        lines.append("| Agent | Actions | Errors | Verdict | Breakdown |")
+        lines.append("|---|---|---|---|---|")
+        for name, d in sorted(by_agent.items()):
+            rate = (100.0 * d["errors"] / d["actions"]) if d["actions"] else 0.0
+            if d["errors"] == 0:
+                verdict = "✅ PASS"
+            elif rate <= 20:
+                verdict = "⚠️ WARNING"
+            else:
+                verdict = "❌ FAIL"
+            lines.append(
+                f"| {name} | {d['actions']} | {d['errors']} | {verdict} | {', '.join(d['parts'][:5])} |"
+            )
+    lines.append("")
+    if agents:
+        rows = [
+            f"| {a['id']} | {a['name']} | {'ON' if a['is_active'] else 'off'} | {a['mem']} |"
+            for a in agents
+        ]
+        lines.append("**Agents registry:**")
+        lines.append("| id | Agent | Status | Memory rows |")
+        lines.append("|---|---|---|---|")
+        lines.extend(rows)
+    lines.append("")
+    lines.append("## Recommendations")
+    recs = []
+    failing = [n for n, d in by_agent.items() if d["errors"] and (100.0 * d["errors"] / d["actions"]) > 20]
+    if failing:
+        recs.append(f"**{', '.join(failing)}** me error rate zyada hai — unke tools/providers verify karo, memory me fix rule save karo.")
+    warn = [n for n, d in by_agent.items() if d["errors"] and (100.0 * d["errors"] / d["actions"]) <= 20]
+    if warn:
+        recs.append(f"**{', '.join(warn)}** ki recent errors review karo (log niche).")
+    if pending:
+        recs.append(f"**{pending} pending review(s)** maujood hain — completion ke liye inhe process karo.")
+    if not recs:
+        recs.append("Koi critical issue nahi. Har 2-3 hafte routine audit rehne dijiye (dedicated table sprint me CSV/ICD lookup bhi aa jayega).")
+    lines.extend("- " + r for r in recs)
+    lines.append("")
+    if recent:
+        lines.append("## Recent audit trail")
+        lines.append("| Agent | Action | Status | Detail |")
+        lines.append("|---|---|---|---|")
+        for r in recent:
+            detail = (r["error"] if r["status"] == "error" else r["created_at"]) or "\u2014"
+            lines.append(f"| {r['agent_name'] or 'system'} | {r['action']} {r['kind']} | {r['status']} | {str(detail)[:60]} |")
+        lines.append("")
+    return "\n".join(lines)
 
 
 def _reviewer_agent(worker, question):
@@ -3827,6 +4446,10 @@ def _agent_router(question, actives, sid=None):
     domain = _domain_expert_route(question, actives)
     if domain is not None:
         return domain
+    # File-work / system QC audit: the Executive Ops & Auditor agent takes it.
+    qc = _qc_agent(actives)
+    if qc is not None and _qc_file_intent(question):
+        return qc
     # Dashboard-management words intercept the conversation -> Administrator.
     admin = next((a for a in actives if _is_admin_agent(a)), None)
     if admin is not None and _has_app_manage_intent(question):
@@ -5990,7 +6613,7 @@ def delete_routine(routine_id):
 
 BACKUP_TABLES = ["tasks", "notes", "routines", "routine_completions", "note_versions", "pages", "note_shares"]
 # Curated/chat tables are reset too (kept out of JSON/Excel backups for now)
-NON_BACKUP_TABLES = ["chat_messages", "chat_sessions", "knowledge_base", "chat_settings"]
+NON_BACKUP_TABLES = ["chat_messages", "chat_sessions", "knowledge_base", "chat_settings", "agent_audit"]
 
 
 def reset_db():
@@ -6019,6 +6642,24 @@ def export_rows(conn):
         rows = conn.execute(f"SELECT * FROM {table}").fetchall()
         data[table] = [dict(r) for r in rows]
     return {"data": data}
+
+
+@app.get("/api/agents/files/download")
+@app.get("/api/agents/files/download")
+def agent_file_download():
+    """Stream a generated file (Aazaz Ahmed file-engine output) to the authenticated
+    user. Any file the agent wrote is served as an attachment; readers can't preview."""
+    u = current_user()
+    if not u or u["role"] not in ("admin", "manager"):
+        return jsonify({"error": "Admin/manager access required"}), 403
+    raw = (request.args.get("p") or "").strip()
+    try:
+        path = _sanitize_fs_path(raw)
+    except ValueError as e:
+        return jsonify({"error": str(e)}), 400
+    if not os.path.isfile(path):
+        return jsonify({"error": "File nahi mili"}), 404
+    return send_file(path, as_attachment=True, download_name=os.path.basename(path))
 
 
 @app.get("/api/export/json")

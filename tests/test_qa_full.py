@@ -12,6 +12,7 @@ import sqlite3
 import sys
 import tempfile
 import unittest
+import urllib.parse
 from datetime import date
 from pathlib import Path
 from unittest import mock
@@ -553,6 +554,250 @@ class TestQaAgentMemory(QaBase):
         text, ok = app_module._run_readonly_sql("SELECT content FROM agent_memory")
         self.assertTrue(ok)
         self.assertIn("v1", text)
+
+
+class TestQaAazazAgent(QaBase):
+    """Aazaz Ahmed: file-engine ops, path safety, agent_audit QC + download link."""
+
+    def setUp(self):
+        super().setUp()
+        self._set("agent_enabled", "1")
+        self._set("live_chat_ai", "0")
+        self._set("review_enabled", "1")
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.executescript("""
+        INSERT INTO chat_agents (name, description, system_prompt, is_active, created_at, icon) VALUES
+        ('Rumman Lashari', 'Administrator & Agent Coordinator - poore system ka boss.',
+         'Aap Administrator hain.', 1, '2026-01-01 00:00:00', '');
+        """)
+        conn.commit()
+        conn.close()
+
+    def _aazaz_row(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        row = conn.execute("SELECT * FROM chat_agents WHERE name = ?", (app_module._AAZAZ_NAME,)).fetchone()
+        conn.close()
+        return row
+
+    def _seed_aazaz(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        conn.close()
+        return self._aazaz_row()
+
+    def test_seed_aazaz_idempotent(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        first = conn.execute(
+            "SELECT COUNT(*) c FROM chat_agents WHERE name = ?", (app_module._AAZAZ_NAME,)
+        ).fetchone()[0]
+        mem1 = conn.execute(
+            "SELECT COUNT(*) c FROM agent_memory WHERE agent_id = (SELECT id FROM chat_agents WHERE name = ?)",
+            (app_module._AAZAZ_NAME,),
+        ).fetchone()[0]
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        second = conn.execute(
+            "SELECT COUNT(*) c FROM chat_agents WHERE name = ?", (app_module._AAZAZ_NAME,)
+        ).fetchone()[0]
+        mem2 = conn.execute(
+            "SELECT COUNT(*) c FROM agent_memory WHERE agent_id = (SELECT id FROM chat_agents WHERE name = ?)",
+            (app_module._AAZAZ_NAME,),
+        ).fetchone()[0]
+        conn.close()
+        self.assertEqual(first, 1)
+        self.assertEqual(second, 1)          # idempotent row
+        self.assertGreaterEqual(mem1, 4)      # baseline memory seeded
+        self.assertEqual(mem1, mem2)          # idempotent memory
+        row = self._aazaz_row()
+        self.assertEqual(row["icon"], "lucide:briefcase-business")
+
+    def test_sanitize_fs_path_validation(self):
+        with self.assertRaises(ValueError):
+            app_module._sanitize_fs_path("relative/file.txt")
+        with self.assertRaises(ValueError):
+            app_module._sanitize_fs_path("C:\\Work\\..\\secret.txt")
+        with self.assertRaises(ValueError):
+            app_module._sanitize_fs_path("C:\\Work\\bad\x00name.txt")
+        with self.assertRaises(ValueError):
+            app_module._sanitize_fs_path("C:\\Work\\bad<name>.txt")
+        with self.assertRaises(ValueError):
+            app_module._sanitize_fs_path("")
+        good = os.path.join(tempfile.mkdtemp(prefix="aazaz-path-"), "file.xlsx")
+        self.assertEqual(app_module._sanitize_fs_path(good), os.path.abspath(good))
+
+    def test_file_create_txt_read_and_delete_gate(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-txt-"), "daily-log.txt")
+        text = app_module._run_agent_action(
+            {"action": "file", "kind": "file", "file": {"op": "create", "path": tmp, "content": "Day 1: all good"}}
+        )
+        self.assertIn("**text file ready**", text)
+        self.assertIn(tmp, text)
+        self.assertIn("__filebadge__", text)
+        with open(tmp, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "Day 1: all good")
+        # read
+        out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
+        self.assertIn("Day 1", out)
+        # create again without overwrite -> refused
+        with self.assertRaises(ValueError):
+            app_module._run_agent_action({"action": "file", "kind": "file", "file": {"op": "create", "path": tmp, "content": "x"}})
+        # overwrite explicitly allowed
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {"op": "create", "path": tmp, "content": "replaced", "overwrite": True}})
+        with open(tmp, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "replaced")
+        # delete without confirmation -> refused
+        with self.assertRaises(ValueError):
+            app_module._run_file_action({"file": {"op": "delete", "path": tmp}})
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {"op": "delete", "path": tmp, "overwrite": True}})
+        self.assertFalse(os.path.exists(tmp))
+
+    def test_deletable_denies_system_areas(self):
+        self.assertFalse(app_module._deletable("C:\\Windows\\System32\\evil.exe"))
+        self.assertFalse(app_module._deletable("C:\\Users\\Me\\.ssh\\id_rsa"))
+        self.assertFalse(app_module._deletable("C:\\x\\app.db"))
+        self.assertTrue(app_module._deletable("C:\\Users\\Me\\Desktop\\report2.xlsx"))
+
+    def test_file_xlsx_roundtrip(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-xlsx-"), "patients.xlsx")
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {
+            "op": "create", "path": tmp,
+            "sheet": "Patients",
+            "header": ["Patient", "CPT", "Status"],
+            "rows": [["Ali", "99213", "Pending"], ["Sana", "99214", "Done"]],
+        }})
+        from openpyxl import load_workbook
+        wb = load_workbook(tmp)
+        ws = wb.active
+        self.assertEqual(ws.cell(1, 1).value, "Patient")
+        self.assertEqual(ws.max_row, 3)
+        self.assertEqual(ws.cell(3, 2).value, "99214")
+        wb.close()
+        out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
+        self.assertIn("Patients", out)
+        self.assertIn("99214", out)
+
+    def test_file_docx_roundtrip(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-docx-"), "letter.docx")
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {
+            "op": "create", "path": tmp,
+            "content": "# Subject: remit note\n\nSir, yeh report ready hai.",
+        }})
+        self.assertTrue(os.path.getsize(tmp) > 0)
+        from docx import Document
+        doc = Document(tmp)
+        self.assertEqual(doc.paragraphs[0].text, "Subject: remit note")
+        out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
+        self.assertIn("report ready hai", out)
+
+    def test_file_pdf_create_and_read(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-pdf-"), "report.pdf")
+        app_module._run_file_action({"file": {"op": "create", "path": tmp, "content": "# QC Report\n\nSab agents PASS."}})
+        self.assertTrue(os.path.getsize(tmp) > 0)
+        out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
+        self.assertIn("QC Report", out)
+
+    def test_audit_logged_on_actions(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-audit-"), "n.txt")
+        app_module._run_agent_action(
+            {"action": "file", "kind": "file", "file": {"op": "create", "path": tmp, "content": "hello"}},
+            agent_name="Aazaz Ahmed",
+        )
+        app_module._run_agent_action(
+            {"action": "sql", "kind": "sql", "query": "SELECT COUNT(*) FROM tasks"},
+            agent_name="Aazaz Ahmed",
+        )
+        with self.assertRaises(ValueError):
+            app_module._run_agent_action(
+                {"action": "file", "kind": "file", "file": {"op": "create", "path": tmp, "content": "x"}},
+                agent_name="Aazaz Ahmed",
+            )
+        conn = sqlite3.connect(app_module.DB_PATH)
+        rows = conn.execute("SELECT action, status FROM agent_audit ORDER BY id").fetchall()
+        conn.close()
+        self.assertEqual([tuple(r) for r in rows],
+                         [("file", "ok"), ("sql", "ok"), ("file", "error")])
+
+    def test_qc_report_aggregation(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        app_module._seed_aazaz(conn)
+        conn.commit()
+        conn.close()
+        app_module._audit_entry("Aazaz Ahmed", "file", "create", "/tmp/a.txt", "ok")
+        app_module._audit_entry("Aazaz Ahmed", "file", "read", "/tmp/a.txt", "ok")
+        app_module._audit_entry("Medical Billing", "sql", "sql", "SELECT ...", "error", "bad cpt")
+        report = app_module._run_qc_report()
+        self.assertIn("# System QC Audit", report)
+        self.assertIn("Aazaz Ahmed", report)
+        self.assertIn("PASS", report)
+        self.assertIn("Recommendations", report)
+        self.assertIn("bad cpt", report)
+
+    def test_download_endpoint(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-dl-"), "invoice.txt")
+        with open(tmp, "w", encoding="utf-8") as fh:
+            fh.write("INV-2026 amount 5000")
+        p = urllib.parse.quote(tmp, safe="")
+        r = self.client.get(f"/api/agents/files/download?p={p}")
+        self.assertEqual(r.status_code, 200)
+        self.assertIn(b"INV-2026", r.data)
+        # unauthenticated client -> no session
+        anon = self.app.test_client()
+        r2 = anon.get(f"/api/agents/files/download?p={p}")
+        self.assertEqual(r2.status_code, 401)
+        # invalid path
+        r3 = self.client.get("/api/agents/files/download?p=relative.txt")
+        self.assertEqual(r3.status_code, 400)
+
+    def test_normalize_file_plan(self):
+        pl = app_module._normalize_agent_plan(
+            {"action": "file", "file": {"op": "create", "path": "C:\\x\\y.xlsx", "content": "a", "overwrite": True}}
+        )
+        self.assertEqual(pl["action"], "file")
+        self.assertEqual(pl["kind"], "file")
+        self.assertEqual(pl["file"]["path"], "C:\\x\\y.xlsx")
+        self.assertEqual(pl["file"]["op"], "create")
+        self.assertIsNone(app_module._normalize_agent_plan({"action": "file", "file": {"op": "teleport"}}))
+        self.assertIsNone(app_module._normalize_agent_plan({"action": "file"}))
+
+    def test_qc_routing_hooks(self):
+        aazaz = self._aazaz_row()
+        if aazaz is None:
+            aazaz = self._seed_aazaz()
+        others = [
+            {"id": 1, "name": "Rumman Lashari", "description": "Administrator"},
+            {"id": aazaz["id"], "name": aazaz["name"], "description": aazaz["description"]},
+        ]
+        self.assertEqual(app_module._qc_agent(others)["name"], "Aazaz Ahmed")
+        self.assertTrue(app_module._qc_file_intent("Excel bana do patients ka"))
+        self.assertTrue(app_module._qc_file_intent("system audit karo"))
+        self.assertFalse(app_module._qc_file_intent("good morning"))
+
+    def test_file_plan_via_chat_maker_checked(self):
+        self._seed_aazaz()
+        sid = self._fresh_session()
+        os.environ["GEMINI_API_KEY"] = "AIza-test"
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-chat-"), "from-chat.txt")
+        plan = {"action": "file", "kind": "file", "id": None, "title": "", "fields": {},
+                "file": {"op": "create", "path": tmp, "content": "chat se bani"}}
+        try:
+            with mock.patch.object(app_module, "_agent_plan", return_value=plan), \
+                 mock.patch.object(app_module, "_review_draft", return_value=("approved", "")), \
+                 mock.patch.object(app_module, "_llm_prompt", return_value=""):
+                text, source, outcome = app_module.agent_answer(sid, "file bana do", "Tester", False)
+            self.assertEqual(outcome, "action")
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+        self.assertTrue(os.path.isfile(tmp))
+        with open(tmp, "r", encoding="utf-8") as fh:
+            self.assertEqual(fh.read(), "chat se bani")
+        conn = sqlite3.connect(app_module.DB_PATH)
+        n = conn.execute("SELECT COUNT(*) c FROM agent_audit WHERE action = 'file' AND status = 'ok'").fetchone()[0]
+        conn.close()
+        self.assertEqual(n, 1)
 
 
 if __name__ == "__main__":
