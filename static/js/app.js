@@ -4532,12 +4532,12 @@ function agentDefaultIcon(ag) {
   /* Fallback icon when an agent has none saved — role detected from its
      name/description so every chip/tile still shows a meaningful icon. */
   const blob = " " + String((ag && (ag.name + " " + (ag.description || ""))) || "").toLowerCase() + " ";
-  if (/(medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b)/.test(blob)) return "🩺";
-  if (/\bdata[ -]?entry\b|\bvdl\b/.test(blob)) return "⌨️";
-  if (/\bcalling\b|\bcalls\b|\bphone\b/.test(blob)) return "📞";
-  if (/\bern\b|\bremittance\b/.test(blob)) return "🧾";
-  if (/\bprocessing\b|\bprocessor\b/.test(blob)) return "⚙️";
-  if (/\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b/.test(blob)) return "🛡️";
+  if (/(medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b)/.test(blob)) return "lucide:stethoscope";
+  if (/\bdata[ -]?entry\b|\bvdl\b/.test(blob)) return "lucide:database";
+  if (/\bcalling\b|\bcalls\b|\bphone\b/.test(blob)) return "lucide:phone";
+  if (/\bern\b|\bremittance\b/.test(blob)) return "lucide:receipt";
+  if (/\bprocessing\b|\bprocessor\b/.test(blob)) return "lucide:settings";
+  if (/\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b/.test(blob)) return "lucide:shield-check";
   return "";
 }
 

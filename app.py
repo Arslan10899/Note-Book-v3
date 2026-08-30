@@ -3140,17 +3140,17 @@ def _agent_icon(a):
         return icon
     blob = (" " + str(a.get("name") or "") + " " + str(a.get("description") or "") + " ").lower()
     if re.search(r"(medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b)", blob):
-        return "🩺"
+        return "lucide:stethoscope"
     if re.search(r"\bdata[ -]?entry\b|\bvdl\b", blob):
-        return "⌨️"
+        return "lucide:database"
     if re.search(r"\bcalling\b|\bcalls\b|\bphone\b", blob):
-        return "📞"
+        return "lucide:phone"
     if re.search(r"\bern\b|\bremittance\b", blob):
-        return "🧾"
+        return "lucide:receipt"
     if re.search(r"\bprocessing\b|\bprocessor\b", blob):
-        return "⚙️"
+        return "lucide:settings"
     if re.search(r"\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b", blob):
-        return "🛡️"
+        return "lucide:shield-check"
     return ""
 
 
