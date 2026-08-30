@@ -746,6 +746,14 @@ _AAZAZ_SYSTEM_PROMPT = (
     "aur memory hold-up.\n"
     "- Report structured Markdown 'scorecard' hoti hai: PASS / WARNING / FAIL + findings + concrete "
     "recommendations.\n\n"
+    "ADVISORY / CONSULTATIVE BEHAVIOUR (hamesha):\n"
+    "- Jab file, calculation ya draft ki structure ambiguous ho, solution ke SAATH 1-2 recommendations do "
+    "(e.g. 'Is report mein Summary Card aur Monthly Trend table add karna behtar rahega — kya main add "
+    "kar doon?').\n"
+    "- Excel me modern formulas prefer karo: 'Maine XLOOKUP use kiya hai jo VLOOKUP se zyada reliable "
+    "hai.' Awaan par SUM/AVERAGE/COUNTIF/IF ka istemal karo.\n"
+    "- Readability ke liye hamesha ek alternative offer karo: zebra tables, frozen headers, number formats "
+    "(currency/percent/date), executive palette.\n\n"
     "EMAIL:\n"
     "- Corporate email/reminder draft (.md/.txt) banate ho: subject, greeting, body (action points), "
     "structured sign-off. Tone professional aur concise.\n\n"
@@ -757,6 +765,10 @@ _AAZAZ_SEED_MEMORY = (
     ("instruction", "path_rule", "Always use exact ABSOLUTE file paths; never guess — ask the user."),
     ("instruction", "write_safety", "Overwrite/delete only after explicit user confirmation; never touch OS/system files."),
     ("preference", "report_style", "QC reports = structured Markdown scorecard with PASS/WARNING/FAIL + recommendations."),
+    ("instruction", "consultative", "Jab file/calculation/draft structure ambiguous ho, solution ke saath hamesha 1-2 recommendations bhi do (e.g. Summary Card, Monthly Trend table) — 'kya main add kar doon?' pooch ke."),
+    ("instruction", "formula_hint", "Excel me modern formulas (XLOOKUP, SUM, AVERAGE, COUNTIF, IF, nested logic) use karo aur batlao: 'Maine XLOOKUP use kiya hai jo VLOOKUP se zyada reliable hai.'"),
+    ("instruction", "best_practice", "Readability ke liye hamesha 1-2 practical alternatives offer karo: zebra tables, frozen headers, number/currency/percent/date formats, executive palette."),
+    ("preference", "style_engine", "Aazaz ka file engine executive template use karta hai: Slate Navy #1E293B, Cool Gray #64748B, accent Indigo/Blue #2563EB, grid #E2E8F0 — PDF/Word/xlsx sab par."),
 )
 
 
@@ -3062,14 +3074,29 @@ def _file_badge(path):
     return "\n\n__filebadge__" + urllib.parse.quote(path, safe="") + "__" + url + "__"
 
 
+def _is_table_line(line):
+    """True when a markdown line is (part of) a table: '| a | b |', 'a | b | c', or separator."""
+    s = line.strip()
+    if "|" not in s:
+        return False
+    if s.startswith("|"):
+        return True
+    if re.match(r"^\s*:?-{2,}:?\s*(\|\s*:?-{2,}:?\s*)+$", s):
+        return True
+    return bool(re.match(r"^[^|#]+\|[^|]+", s))
+
+
 def _parse_table_text(content):
     """Best-effort pipe/TSV table -> list of rows (list of lists)."""
     if not content:
         return []
+    lines = content if isinstance(content, (list, tuple)) else str(content).splitlines()
     rows = []
-    for line in str(content).splitlines():
+    for line in lines:
         line = line.strip()
-        if not line or line.lstrip().startswith(("#", "|", "-")) and not line.startswith("|"):
+        if not line:
+            continue
+        if not line.startswith("|") and line.lstrip().startswith(("-", "#")):
             continue
         sep = line[1:] if line.startswith("|") else line
         sep = sep.rstrip("|")
@@ -3091,9 +3118,116 @@ def _write_text_file(path, fi, overwrite):
     return None
 
 
+# ---- Executive file renderers: modern sans-serif + Slate Navy #1E293B,
+# Cool Gray #64748B, accent Indigo/Blue #2563EB, grid #E2E8F0 -------------
+
+_EXCEL_NUMFMT = {
+    "currency": '"$"#,##0.00',
+    "currency0": '"$"#,##0',
+    "percent": "0.0%",
+    "percent0": "0%",
+    "date": "yyyy-mm-dd",
+    "datetime": "yyyy-mm-dd hh:mm",
+    "int": "#,##0",
+    "number": "#,##0.00",
+}
+
+
+def _excel_col_index(key):
+    if isinstance(key, int):
+        return max(1, key)
+    s = str(key or "").strip()
+    if not s:
+        return None
+    if s.isdigit():
+        return int(s)
+    from openpyxl.utils import column_index_from_string
+    try:
+        return column_index_from_string(s.upper())
+    except ValueError:
+        return None
+
+
+def _openpyxl_column_letter(idx):
+    from openpyxl.utils import get_column_letter
+    return get_column_letter(idx)
+
+
+def _excel_apply_formats(ws, formats):
+    if not isinstance(formats, dict) or ws.max_row < 2:
+        return
+    for key, fmt in formats.items():
+        idx = _excel_col_index(key)
+        if idx is None:
+            continue
+        numfmt = _EXCEL_NUMFMT.get(str(fmt).lower(), str(fmt))
+        for r in range(2, ws.max_row + 1):
+            ws[f"{_openpyxl_column_letter(idx)}{r}"].number_format = numfmt
+
+
+def _excel_autofit(ws, cap=60):
+    for col in ws.iter_cols():
+        letter = _openpyxl_column_letter(col[0].column)
+        best = 0
+        for cell in col:
+            v = cell.value
+            if v is None:
+                continue
+            length = len(str(v)) if not (isinstance(v, str) and v.startswith("=")) else min(len(str(v)), 26)
+            best = max(best, length)
+        if best:
+            ws.column_dimensions[letter].width = min(best + 3, cap)
+
+
+def _excel_conditional(ws, conditional, color_scale_cols=None):
+    from openpyxl.formatting.rule import CellIsRule, ColorScaleRule
+    from openpyxl.styles import PatternFill
+    if isinstance(color_scale_cols, str):
+        color_scale_cols = [color_scale_cols]
+    for ck in (color_scale_cols or []):
+        idx = _excel_col_index(ck)
+        if not idx:
+            continue
+        letter = _openpyxl_column_letter(idx)
+        ws.conditional_formatting.add(
+            f"{letter}2:{letter}{max(2, ws.max_row)}",
+            ColorScaleRule(start_type="min", start_color="FFFFFF", end_type="max", end_color="93C5FD"),
+        )
+    if not isinstance(conditional, dict):
+        return
+    for ck, rule in conditional.items():
+        if not isinstance(rule, dict):
+            continue
+        idx = _excel_col_index(ck)
+        if not idx:
+            continue
+        letter = _openpyxl_column_letter(idx)
+        rng = f"{letter}2:{letter}{max(2, ws.max_row)}"
+        if str(rule.get("type", "")).lower() == "color_scale":
+            ws.conditional_formatting.add(
+                rng,
+                ColorScaleRule(start_type="min", start_color="FFFFFF", end_type="max", end_color=str(rule.get("end", "93C5FD"))),
+            )
+            continue
+        op = str(rule.get("op", "greaterThan")).strip()
+        try:
+            val = float(rule.get("value", 0))
+        except (TypeError, ValueError):
+            val = 0.0
+        formula = [str(int(val)) if float(val).is_integer() else str(val)]
+        ws.conditional_formatting.add(
+            rng,
+            CellIsRule(
+                operator=op,
+                formula=formula,
+                fill=PatternFill(start_color=str(rule.get("fill", "FEE2E2")), end_color=str(rule.get("fill", "FEE2E2")), fill_type="solid"),
+            ),
+        )
+
+
 def _write_xlsx_file(path, fi, overwrite):
     from openpyxl import Workbook, load_workbook
-    from openpyxl.styles import Font
+    from openpyxl.styles import Font, PatternFill
     rows = fi.get("rows")
     if not isinstance(rows, list):
         rows = _parse_table_text(fi.get("content"))
@@ -3116,57 +3250,343 @@ def _write_xlsx_file(path, fi, overwrite):
             for row in rows:
                 ws.append(list(row))
         if header_row:
+            navy = "1E293B"
             for j in range(1, len(header_row) + 1):
-                ws.cell(row=1, column=j).font = Font(bold=True)
+                c = ws.cell(row=1, column=j)
+                c.font = Font(bold=True, color="FFFFFF", size=11)
+                c.fill = PatternFill(start_color=navy, end_color=navy, fill_type="solid")
+    if header_row:
+        ws.freeze_panes = "A2"
+    _excel_apply_formats(ws, fi.get("formats"))
+    _excel_autofit(ws)
+    _excel_conditional(ws, fi.get("conditional"), fi.get("color_scale"))
     wb.save(path)
 
 
+_docx_lib = None
+
+
+def _docx_api():
+    global _docx_lib
+    if _docx_lib is None:
+        from docx import Document
+        from docx.shared import Pt, RGBColor
+        from docx.oxml.ns import qn
+        from docx.oxml import OxmlElement
+        _docx_lib = (Document, qn, OxmlElement, Pt, RGBColor)
+    return _docx_lib
+
+
+def _docx_bottom_rule(para, color="2563EB", sz="18"):
+    qn, OxmlElement = _docx_api()[1], _docx_api()[2]
+    pPr = para._p.get_or_add_pPr()
+    pBdr = OxmlElement("w:pBdr")
+    bottom = OxmlElement("w:bottom")
+    bottom.set(qn("w:val"), "single")
+    bottom.set(qn("w:sz"), sz)
+    bottom.set(qn("w:space"), "4")
+    bottom.set(qn("w:color"), color)
+    pBdr.append(bottom)
+    pPr.append(pBdr)
+
+
+def _docx_navy_heading(doc, text, level):
+    OxmlElement, Pt, RGBColor = _docx_api()[2], _docx_api()[3], _docx_api()[4]
+    h = doc.add_heading(text, level=level)
+    for run in h.runs:
+        run.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+        run.font.name = "Calibri"
+    if level == 1:
+        _docx_bottom_rule(h)
+        h.paragraph_format.space_after = Pt(10)
+    elif level == 2:
+        h.paragraph_format.space_before = Pt(10)
+    return h
+
+
+def _docx_shade_cell(cell, fill):
+    qn, OxmlElement = _docx_api()[1], _docx_api()[2]
+    tcPr = cell._tc.get_or_add_tcPr()
+    shd = tcPr.find(qn("w:shd"))
+    if shd is None:
+        shd = OxmlElement("w:shd")
+        tcPr.append(shd)
+    shd.set(qn("w:val"), "clear")
+    shd.set(qn("w:color"), "auto")
+    shd.set(qn("w:fill"), fill)
+
+
+def _docx_grid(table, color="E2E8F0"):
+    qn, OxmlElement = _docx_api()[1], _docx_api()[2]
+    tblPr = table._tbl.tblPr
+    borders = OxmlElement("w:tblBorders")
+    for edge in ("top", "left", "bottom", "right", "insideH", "insideV"):
+        el = OxmlElement("w:" + edge)
+        el.set(qn("w:val"), "single")
+        el.set(qn("w:sz"), "4")
+        el.set(qn("w:space"), "0")
+        el.set(qn("w:color"), color)
+        borders.append(el)
+    tblPr.append(borders)
+
+
+def _docx_cell_margins(table, top=60, start=110, bottom=60, end=110):
+    qn, OxmlElement = _docx_api()[1], _docx_api()[2]
+    mar = OxmlElement("w:tblCellMar")
+    for name, val in (("top", top), ("start", start), ("bottom", bottom), ("end", end)):
+        el = OxmlElement("w:" + name)
+        el.set(qn("w:w"), str(val))
+        el.set(qn("w:type"), "dxa")
+        mar.append(el)
+    table._tbl.tblPr.append(mar)
+
+
+def _docx_exec_table(doc, raw_rows):
+    rows = _parse_table_text(raw_rows)
+    if not rows:
+        return None
+    ncols = max(len(r) for r in rows)
+    qn, OxmlElement, Pt, RGBColor = _docx_api()[1], _docx_api()[2], _docx_api()[3], _docx_api()[4]
+    table = doc.add_table(rows=len(rows), cols=ncols)
+    table.style = "Table Grid"
+    _docx_grid(table)
+    _docx_cell_margins(table)
+    for j, val in enumerate(rows[0]):
+        if j >= ncols:
+            break
+        cell = table.cell(0, j)
+        cell.text = str(val)
+        _docx_shade_cell(cell, "1E293B")
+        for p in cell.paragraphs:
+            for r in p.runs:
+                r.font.bold = True
+                r.font.color.rgb = RGBColor(0xFF, 0xFF, 0xFF)
+    for i, row in enumerate(rows[1:], start=1):
+        for j, val in enumerate(row):
+            if j >= ncols:
+                break
+            table.cell(i, j).text = str(val)
+    return table
+
+
+def _docx_callout(doc, text):
+    qn, OxmlElement, Pt, RGBColor = _docx_api()[1], _docx_api()[2], _docx_api()[3], _docx_api()[4]
+    table = doc.add_table(rows=1, cols=1)
+    _docx_grid(table, "BFDBFE")
+    _docx_shade_cell(table.cell(0, 0), "EFF6FF")
+    _docx_cell_margins(table)
+    p = table.cell(0, 0).paragraphs[0]
+    run = p.add_run(text)
+    run.font.color.rgb = RGBColor(0x1D, 0x4E, 0xD8)
+    run.font.name = "Calibri"
+    run.font.size = Pt(10)
+    return table
+
+
+def _render_exec_docx(doc, fi, content):
+    Pt, RGBColor = _docx_api()[3], _docx_api()[4]
+    normal = doc.styles["Normal"]
+    normal.font.name = "Calibri"
+    normal.font.size = Pt(10.5)
+    normal.font.color.rgb = RGBColor(0x1E, 0x29, 0x3B)
+    title = str(fi.get("title") or "").strip()
+    if title:
+        _docx_navy_heading(doc, title, 0)
+    meta = "Generated: " + time.strftime("%Y-%m-%d %H:%M") + "  |  Aazaz Ahmed — Executive Operations · QC Auditor"
+    mp = doc.add_paragraph()
+    mr = mp.add_run(meta)
+    mr.font.color.rgb = RGBColor(0x64, 0x74, 0x8B)
+    mr.font.size = Pt(9)
+    mr.font.italic = True
+    table_buf = []
+    for line in content.splitlines():
+        if not line.strip():
+            if table_buf:
+                _docx_exec_table(doc, table_buf)
+                table_buf = []
+            continue
+        if _is_table_line(line):
+            table_buf.append(line)
+            continue
+        if table_buf:
+            _docx_exec_table(doc, table_buf)
+            table_buf = []
+        if line.startswith("# "):
+            _docx_navy_heading(doc, line[2:].strip(), 1)
+        elif line.startswith("## "):
+            _docx_navy_heading(doc, line[3:].strip(), 2)
+        elif line.startswith("### "):
+            _docx_navy_heading(doc, line[4:].strip(), 3)
+        elif line.startswith("> "):
+            _docx_callout(doc, line[2:].strip())
+        elif line.startswith("- "):
+            doc.add_paragraph(line.strip(), style="List Bullet")
+        else:
+            doc.add_paragraph(line.strip())
+    if table_buf:
+        _docx_exec_table(doc, table_buf)
+
+
 def _write_docx_file(path, fi, overwrite):
-    from docx import Document
+    Document = _docx_api()[0]
     content = str(fi.get("content") or "")
     mode = str(fi.get("mode") or "").strip().lower()
     if os.path.exists(path) and mode in ("append", "add"):
         doc = Document(path)
         for line in content.splitlines():
-            if not line.strip():
-                continue
-            doc.add_paragraph(line.strip())
+            if line.strip():
+                doc.add_paragraph(line.strip())
     else:
         doc = Document()
-        for line in content.splitlines():
-            if not line.strip():
-                continue
-            if line.startswith("# "):
-                doc.add_heading(line[2:].strip(), level=1)
-            elif line.startswith("## "):
-                doc.add_heading(line[3:].strip(), level=2)
-            elif line.startswith("### "):
-                doc.add_heading(line[4:].strip(), level=3)
-            else:
-                doc.add_paragraph(line.strip())
+        _render_exec_docx(doc, fi, content)
     doc.save(path)
 
 
+_pdf_lib = None
+
+
+def _pdf_api():
+    global _pdf_lib
+    if _pdf_lib is None:
+        from reportlab.lib.pagesizes import A4
+        from reportlab.lib.styles import ParagraphStyle
+        from reportlab.lib import colors
+        from reportlab.platypus import SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle
+        _pdf_lib = (A4, ParagraphStyle, colors, SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle)
+    return _pdf_lib
+
+
+def _pdf_exec_styles():
+    ParagraphStyle, colors = _pdf_api()[1], _pdf_api()[2]
+    navy = colors.HexColor("#1E293B")
+    gray = colors.HexColor("#64748B")
+    return {
+        "h1": ParagraphStyle("ExH1", fontName="Helvetica-Bold", fontSize=17, leading=21, textColor=navy, spaceAfter=2),
+        "h2": ParagraphStyle("ExH2", fontName="Helvetica-Bold", fontSize=13, leading=16, textColor=navy, spaceBefore=10, spaceAfter=3),
+        "body": ParagraphStyle("ExBody", fontName="Helvetica", fontSize=9.5, leading=13.5, textColor=navy),
+        "bullet": ParagraphStyle("ExBullet", fontName="Helvetica", fontSize=9.5, leading=13, textColor=navy, leftIndent=12, bulletIndent=2),
+        "meta": ParagraphStyle("ExMeta", fontName="Helvetica-Oblique", fontSize=8, textColor=gray),
+    }
+
+
+def _pdf_exec_table(samples, rows, repeat=1):
+    _, _, colors, _, Paragraph, _, Table, TableStyle = _pdf_api()
+    body = _pdf_exec_styles()["body"]
+    navy = colors.HexColor("#1E293B")
+    grid = colors.HexColor("#E2E8F0")
+    zebra = colors.HexColor("#F1F5F9")
+    data = []
+    for i, r in enumerate(rows):
+        cells = []
+        for v in r:
+            cells.append(str(v) if i == 0 else Paragraph(str(v), body))
+        data.append(cells)
+    style = [
+        ("BACKGROUND", (0, 0), (-1, 0), navy),
+        ("TEXTCOLOR", (0, 0), (-1, 0), colors.white),
+        ("FONTNAME", (0, 0), (-1, 0), "Helvetica-Bold"),
+        ("FONTSIZE", (0, 0), (-1, 0), 8.5),
+        ("FONTSIZE", (0, 1), (-1, -1), 8),
+        ("TEXTCOLOR", (0, 1), (-1, -1), navy),
+        ("GRID", (0, 0), (-1, -1), 0.4, grid),
+        ("VALIGN", (0, 0), (-1, -1), "TOP"),
+        ("TOPPADDING", (0, 0), (-1, -1), 3),
+        ("BOTTOMPADDING", (0, 0), (-1, -1), 3),
+        ("LEFTPADDING", (0, 0), (-1, -1), 5),
+        ("RIGHTPADDING", (0, 0), (-1, -1), 5),
+    ]
+    for i in range(1, len(rows)):
+        if i % 2 == 0:
+            style.append(("BACKGROUND", (0, i), (-1, i), zebra))
+    return Table(data, repeatRows=repeat, style=TableStyle(style))
+
+
+def _pdf_exec_callout(samples, text):
+    ParagraphStyle, colors = _pdf_api()[1], _pdf_api()[2]
+    _, _, _, _, Paragraph, _, Table, TableStyle = _pdf_api()
+    body = samples["body"]
+    box = Paragraph(text, ParagraphStyle("ExNote", parent=body, textColor=colors.HexColor("#1D4ED8")))
+    return Table(
+        [[box]],
+        style=TableStyle([
+            ("BACKGROUND", (0, 0), (-1, -1), colors.HexColor("#EFF6FF")),
+            ("BOX", (0, 0), (-1, -1), 0.8, colors.HexColor("#BFDBFE")),
+            ("TOPPADDING", (0, 0), (-1, -1), 6),
+            ("BOTTOMPADDING", (0, 0), (-1, -1), 6),
+            ("LEFTPADDING", (0, 0), (-1, -1), 8),
+            ("RIGHTPADDING", (0, 0), (-1, -1), 8),
+        ]),
+    )
+
+
 def _write_pdf_file(path, fi, overwrite):
-    from reportlab.lib.pagesizes import A4
-    from reportlab.lib.styles import getSampleStyleSheet
-    from reportlab.platypus import Paragraph, SimpleDocTemplate, Spacer
+    A4, ParagraphStyle, colors, SimpleDocTemplate, Paragraph, Spacer, Table, TableStyle = _pdf_api()
     content = str(fi.get("content") or "")
-    styles = getSampleStyleSheet()
+    styles = _pdf_exec_styles()
+    navy = colors.HexColor("#1E293B")
+    accent = colors.HexColor("#2563EB")
+    title = str(fi.get("title") or "").strip() or "Executive Report"
+    gen_date = time.strftime("%Y-%m-%d %H:%M")
+
+    def _on_page(canvas, doc):
+        canvas.saveState()
+        canvas.setFont("Helvetica-Bold", 8)
+        canvas.setFillColor(navy)
+        canvas.drawString(54, A4[1] - 36, getattr(doc, "exec_title", title))
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.drawRightString(A4[0] - 54, A4[1] - 36, getattr(doc, "exec_date", gen_date))
+        canvas.setStrokeColor(accent)
+        canvas.setLineWidth(1.2)
+        canvas.line(54, A4[1] - 42, A4[0] - 54, A4[1] - 42)
+        canvas.setStrokeColor(colors.HexColor("#E2E8F0"))
+        canvas.setLineWidth(0.6)
+        canvas.line(54, 34, A4[0] - 54, 34)
+        canvas.setFont("Helvetica", 8)
+        canvas.setFillColor(colors.HexColor("#64748B"))
+        canvas.drawString(54, 24, "Aazaz Ahmed — Executive Operations · QC Auditor")
+        canvas.drawRightString(A4[0] - 54, 24, "Page " + str(doc.page))
+        canvas.restoreState()
+
+    doc = SimpleDocTemplate(
+        path, pagesize=A4,
+        leftMargin=54, rightMargin=54, topMargin=66, bottomMargin=48,
+        title=title,
+        onFirstPage=_on_page, onLaterPages=_on_page,
+    )
+    doc.exec_title = title
+    doc.exec_date = gen_date
     story = []
+    story.append(Paragraph(title, styles["h1"]))
+    story.append(Paragraph("Generated: " + gen_date + "  |  Aazaz Ahmed — Executive Operations", styles["meta"]))
+    story.append(Spacer(1, 6))
+    table_buf = []
     for line in content.splitlines():
         if not line.strip():
+            if table_buf:
+                story.append(_pdf_exec_table(styles, table_buf))
+                table_buf = []
             story.append(Spacer(1, 8))
             continue
+        if _is_table_line(line):
+            table_buf.append(line)
+            continue
+        if table_buf:
+            story.append(_pdf_exec_table(styles, table_buf))
+            table_buf = []
         if line.startswith("# "):
-            story.append(Paragraph(line[2:].strip(), styles["Heading1"]))
+            story.append(Paragraph(line[2:].strip(), styles["h1"]))
         elif line.startswith("## "):
-            story.append(Paragraph(line[3:].strip(), styles["Heading2"]))
+            story.append(Paragraph(line[3:].strip(), styles["h2"]))
+        elif line.startswith("> "):
+            story.append(_pdf_exec_callout(styles, line[2:].strip()))
         elif line.startswith("- "):
-            story.append(Paragraph("\u2022 " + line[2:].strip(), styles["BodyText"]))
+            story.append(Paragraph(line[2:].strip(), styles["bullet"], bulletText="\u2022"))
         else:
-            story.append(Paragraph(line.strip(), styles["BodyText"]))
-    SimpleDocTemplate(path, pagesize=A4).build(story)
+            story.append(Paragraph(line.strip(), styles["body"]))
+    if table_buf:
+        story.append(_pdf_exec_table(styles, table_buf))
+    doc.build(story)
 
 
 def _write_file(path, fi, overwrite):

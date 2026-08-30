@@ -551,7 +551,7 @@ class TestQaAgentMemory(QaBase):
     def test_readonly_sql_allows_memory_reads(self):
         aid = self._agent_row()["id"]
         self.client.post(f"/api/agents/{aid}/memory", json={"key": "k1", "content": "v1"})
-        text, ok = app_module._run_readonly_sql("SELECT content FROM agent_memory")
+        text, ok = app_module._run_readonly_sql("SELECT content FROM agent_memory WHERE agent_id = " + str(aid))
         self.assertTrue(ok)
         self.assertIn("v1", text)
 
@@ -689,7 +689,9 @@ class TestQaAazazAgent(QaBase):
         self.assertTrue(os.path.getsize(tmp) > 0)
         from docx import Document
         doc = Document(tmp)
-        self.assertEqual(doc.paragraphs[0].text, "Subject: remit note")
+        texts = [p.text for p in doc.paragraphs]
+        self.assertTrue(any("Subject: remit note" in t for t in texts))
+        self.assertTrue(any("report ready hai" in t for t in texts))
         out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
         self.assertIn("report ready hai", out)
 
@@ -699,6 +701,74 @@ class TestQaAazazAgent(QaBase):
         self.assertTrue(os.path.getsize(tmp) > 0)
         out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
         self.assertIn("QC Report", out)
+
+    def test_xlsx_exec_formulas_formats_freeze_conditional(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-xlsx2-"), "ledger.xlsx")
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {
+            "op": "create", "path": tmp,
+            "sheet": "Ledger",
+            "header": ["Item", "Qty", "Rate", "Total", "Share"],
+            "rows": [["A", 3, 10, "=C2*B2", "=D2/$D$4"], ["B", 5, 8, "=C3*B3", "=D3/$D$4"],
+                     ["Total", "", "", "=SUM(D2:D3)", ""]],
+            "formats": {"3": "currency", "4": "currency", "2": "int", "5": "percent"},
+            "conditional": {"2": {"op": ">", "value": 4, "fill": "FEE2E2"}},
+            "color_scale": "4",
+        }})
+        from openpyxl import load_workbook
+        wb = load_workbook(tmp)
+        ws = wb["Ledger"]
+        self.assertEqual(ws.freeze_panes, "A2")                    # frozen header
+        self.assertEqual(ws["D2"].value, "=C2*B2")                 # formula injected
+        self.assertEqual(ws["D4"].value, "=SUM(D2:D3)")            # nested logic
+        self.assertEqual(ws["C2"].number_format, '"$"#,##0.00')    # currency column
+        self.assertEqual(ws["B2"].number_format, "#,##0")          # integer column
+        self.assertEqual(ws["E2"].number_format, "0.0%")           # percent column
+        self.assertGreater(ws.column_dimensions["A"].width, 3)     # autofit applied
+        self.assertGreaterEqual(len(list(ws.conditional_formatting)), 2)
+        wb.close()
+
+    def test_docx_exec_styles_and_callout(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-docx2-"), "exec.docx")
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {
+            "op": "create", "path": tmp, "title": "Revenue Report",
+            "content": "# Quarterly Report\n\n> Note: Revenue up 12% QoQ.\n\n"
+                       "## Revenue\n\nWeek | Amount\n---|---\nW1 | $1,200.50\nW2 | $1,340.00\n",
+        }})
+        from docx import Document
+        doc = Document(tmp)
+        self.assertEqual(doc.paragraphs[0].text, "Revenue Report")         # Title
+        self.assertIn("Generated:", doc.paragraphs[1].text)                # meta line
+        self.assertEqual(doc.paragraphs[2].style.name, "Heading 1")         # H1 hierarchy
+        self.assertGreaterEqual(len(doc.tables), 2)                        # callout + data table
+        texts = [p.text for p in doc.paragraphs]
+        self.assertTrue(any("Quarterly Report" in t for t in texts))
+        self.assertTrue(any("Revenue" in t for t in texts))
+        data_tbl = doc.tables[1]
+        self.assertEqual(data_tbl.cell(0, 0).text, "Week")                 # styled header row
+        self.assertEqual(data_tbl.cell(1, 1).text, "$1,200.50")
+
+    def test_pdf_exec_header_footer_and_table(self):
+        tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-pdf2-"), "exec.pdf")
+        app_module._run_agent_action({"action": "file", "kind": "file", "file": {
+            "op": "create", "path": tmp, "title": "Ops Scorecard",
+            "content": "# QC Report\n\n> Summary: 3 agents audited.\n\n"
+                       "| Agent | Verdict |\n|---|---|\n| Aazaz Ahmed | PASS |\n| Medical Billing | WARNING |\n",
+        }})
+        self.assertTrue(os.path.getsize(tmp) > 1000)
+        out = app_module._run_file_action({"file": {"op": "read", "path": tmp}})
+        self.assertIn("QC Report", out)          # heading rendered
+        self.assertIn("Aazaz Ahmed", out)        # zebra table row text
+
+    def test_seed_memory_includes_advisory(self):
+        self._seed_aazaz()
+        conn = sqlite3.connect(app_module.DB_PATH)
+        rows = conn.execute(
+            "SELECT kind, key FROM agent_memory WHERE agent_id = (SELECT id FROM chat_agents WHERE name = ?)",
+            (app_module._AAZAZ_NAME,),
+        ).fetchall()
+        conn.close()
+        keys = {k for _, k in rows}
+        self.assertTrue({"consultative", "formula_hint", "best_practice", "style_engine"} <= keys)
 
     def test_audit_logged_on_actions(self):
         tmp = os.path.join(tempfile.mkdtemp(prefix="aazaz-audit-"), "n.txt")
