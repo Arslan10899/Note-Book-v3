@@ -1,8 +1,4 @@
-# Runtime data — do not upload
-assistant.db
-assistant.db-wal
-assistant.db-shm
-uploads/
+# Runtime data
 __pycache__/
 *.pyc
 
