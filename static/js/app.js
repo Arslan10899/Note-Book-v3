@@ -4528,11 +4528,25 @@ function agentHue(ag) {
   return AGENT_CHIP_HUES[h % AGENT_CHIP_HUES.length];
 }
 
+function agentDefaultIcon(ag) {
+  /* Fallback icon when an agent has none saved — role detected from its
+     name/description so every chip/tile still shows a meaningful icon. */
+  const blob = " " + String((ag && (ag.name + " " + (ag.description || ""))) || "").toLowerCase() + " ";
+  if (/(medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b)/.test(blob)) return "🩺";
+  if (/\bdata[ -]?entry\b|\bvdl\b/.test(blob)) return "⌨️";
+  if (/\bcalling\b|\bcalls\b|\bphone\b/.test(blob)) return "📞";
+  if (/\bern\b|\bremittance\b/.test(blob)) return "🧾";
+  if (/\bprocessing\b|\bprocessor\b/.test(blob)) return "⚙️";
+  if (/\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b/.test(blob)) return "🛡️";
+  return "";
+}
+
 function agentChipHTML(ag, iconOnly) {
   const isObj = ag && typeof ag === "object";
   const rawName = isObj ? ag.name : ag;
   const name = escapeHtml(String(rawName || ""));
-  const icon = isObj && ag.icon ? pageIconHTML(ag.icon, iconOnly ? "h-4 w-4" : "h-3 w-3") : "";
+  const iconName = isObj ? (ag.icon || agentDefaultIcon(ag)) : "";
+  const icon = iconName ? pageIconHTML(iconName, iconOnly ? "h-4 w-4" : "h-3 w-3") : "";
   if (iconOnly) {
     // Many responders at once -> keep the workflow row compact: avatar only,
     // full name on hover.
@@ -4811,8 +4825,8 @@ function renderAgents() {
   grid.innerHTML = agents.map((a) => {
     const isActive = !!activeMap[a.id];
     const initials = escapeHtml((a.name || "?").slice(0, 1).toUpperCase());
-    const tileIcon = a.icon
-      ? `${pageIconHTML(a.icon, "h-9 w-9")}`
+    const tileIcon = (a.icon || agentDefaultIcon(a))
+      ? `${pageIconHTML(a.icon || agentDefaultIcon(a), "h-9 w-9")}`
       : `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">${initials}</span>`;
     return `
       <div class="flex flex-col rounded-xl border border-border bg-card/60 p-4 transition-all ${isActive ? "border-emerald-500/50 shadow-lg" : "hover:border-primary/40"}" data-agent-row="${a.id}">
