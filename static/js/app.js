@@ -25,7 +25,7 @@ let HOLIDAYS = {};
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings" };
+const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -191,7 +191,7 @@ function currentRouteSegs() {
 
 async function switchView(name) {
   // View-only accounts are limited to Dashboard, Notes & Pages
-  if (state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings"].includes(name)) {
+  if (state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"].includes(name)) {
     name = "dashboard";
     toast("Your account can only view Dashboard, Notes & Pages", "info");
   }
@@ -218,6 +218,10 @@ async function switchView(name) {
   else if (name === "pages") showPagesList();
   else if (name === "webportals") loadPortals();
   else if (name === "schedule") loadSchedule();
+  else if (name === "chat") loadChat();
+  else if (name === "knowledge") loadKnowledge();
+  else if (name === "chat-settings") loadChatSettings();
+  else if (name === "agents") loadAgents();
   else if (name === "calendar") {
     HOLIDAYS = buildHolidaysForYear(state.calY);
     renderCalendar();
@@ -482,8 +486,9 @@ function renderPagesGrid() {
             <p class="mt-0.5 text-[11px] text-muted-foreground">${nNotes} note${nNotes === 1 ? "" : "s"} · ${nTasks} task${nTasks === 1 ? "" : "s"}</p>
           </div>
         </div>
-        <div class="mt-3 flex items-center">
+        <div class="mt-3 flex items-center gap-1.5">
           <span class="text-[10px] text-muted-foreground">${relTime(p.updated_at)}</span>
+          ${creatorChip(p)}
           <div class="ml-auto hidden items-center gap-1 group-hover:flex">
             <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-pact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
           </div>
@@ -838,7 +843,7 @@ function requireWrite(what = "make changes") {
 
 function applyRoleUI() {
   const w = canWrite();
-  ["#tasks-add-btn", "#sched-add-btn", "#notes-add-btn", "#pages-add-btn", "#viewer-edit-btn"].forEach((sel) => {
+  ["#tasks-add-btn", "#sched-add-btn", "#notes-add-btn", "#pages-add-btn", "#viewer-edit-btn", "#knowledge-add-btn"].forEach((sel) => {
     const el = $(sel);
     if (el) el.classList.toggle("hidden", !w);
   });
@@ -848,7 +853,7 @@ function applyRoleUI() {
     if (el) el.classList.toggle("hidden", !isAdminUser());
   });
   // View-only users see only Dashboard, Notes & Pages
-  const restricted = new Set(["tasks", "schedule", "calendar", "settings"]);
+  const restricted = new Set(["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"]);
   const isViewer = state.user?.role === "user";
   // Page detail: hide write controls for viewers (backend still enforces 403)
   const pageIconBtn = $("#page-icon-btn");
@@ -1745,6 +1750,7 @@ function renderNotesGrid() {
             .map((t) => `<span class="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">${escapeHtml(t.trim())}</span>`)
             .join("")}
           ${n.page_id ? `<span class="max-w-[110px] truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="In page: ${escapeHtml(pageName(n.page_id))}">${escapeHtml(pageName(n.page_id))}</span>` : ""}
+          ${creatorChip(n)}
           <span class="ml-auto shrink-0 text-right text-[10px] leading-tight text-muted-foreground" title="Created ${fmtStampFull(n.created_at)}">
             ${relTime(n.updated_at)}<br><span class="opacity-70">Created ${fmtStampShort(n.created_at)}</span>
           </span>
@@ -2995,6 +3001,14 @@ function dueChip(t) {
   </span>`;
 }
 
+function creatorChip(item) {
+  const c = item && item.created_by;
+  if (!c) return "";
+  if (c === "AI")
+    return `<span class="inline-flex shrink-0 items-center gap-1 rounded-md bg-cyan-500/10 px-1.5 py-0.5 text-[10px] font-semibold text-cyan-600 dark:text-cyan-400" title="Created by AI"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Create by AI</span>`;
+  return `<span class="inline-flex shrink-0 items-center rounded-md bg-muted px-1.5 py-0.5 text-[10px] font-medium text-muted-foreground" title="Created by ${escapeHtml(c)}">Create by ${escapeHtml(c)}</span>`;
+}
+
 async function loadTasks() {
   try {
     state.tasks = await api("/api/tasks");
@@ -3021,6 +3035,7 @@ function renderTasks() {
             </div>
             ${priorityBadge(t.priority)}
             ${dueChip(t)}
+            ${creatorChip(t)}
             ${t.page_id ? `<span class="max-w-[110px] truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="In page: ${escapeHtml(pageName(t.page_id))}">${escapeHtml(pageName(t.page_id))}</span>` : ""}
             <div class="flex items-center gap-0.5">
               <a class="tool-btn" href="/api/tasks/${t.id}/export.xlsx" download title="Export to Excel"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg></a>
@@ -3150,6 +3165,7 @@ function renderSchedList() {
                 <p class="truncate text-sm font-medium ${done ? "text-muted-foreground line-through" : ""}">${escapeHtml(r.title)}</p>
               </div>
               ${r.time ? `<span class="badge badge-secondary">${r.time}</span>` : ""}
+              ${creatorChip(r)}
               ${canWrite() ? `<button class="tool-btn" data-redit="${r.id}" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
               ${isAdminUser() ? `<button class="tool-btn hover:text-destructive" data-rdel="${r.id}" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
             </div>`;
@@ -3768,6 +3784,2180 @@ function loadPortals() {
   renderPortals();
 }
 
+// ---------- Hybrid chat: local knowledge + cloud LLM ----------
+
+let chatSessions = [];
+let chatActiveSession = null;
+let chatMessages = [];
+let chatBusy = false;
+let chatAttachments = [];
+let chatAttaching = false;
+let chatModels = { active: "gemini", active_label: "Gemini (Google)", active_model: "", providers: [] };
+let chatAgentEnabled = false;
+let chatLive = false;
+let chatSettings = { active: "gemini", active_label: "", providers: [], meta: {} };
+let chatSettingsProvider = "";
+const CHAT_PROVIDER_BRANDS = {
+  gemini: { cls: "bg-gradient-to-br from-fuchsia-500 via-purple-500 to-indigo-500", glyph: "✦" },
+  openai: { cls: "bg-gradient-to-br from-emerald-600 to-teal-600", glyph: "◆" },
+  groq: { cls: "bg-gradient-to-br from-orange-500 to-red-500", glyph: "G" },
+  xai: { cls: "bg-[#141414]", glyph: "✕" },
+  omni: { cls: "bg-gradient-to-br from-sky-500 to-indigo-500", glyph: "◉" },
+};
+
+function providerLogo(provider, size = "h-9 w-9 text-base") {
+  const b = CHAT_PROVIDER_BRANDS[provider] || { cls: "bg-muted", glyph: (provider || "?").slice(0, 1).toUpperCase() };
+  return `<span class="inline-flex ${size} shrink-0 items-center justify-center rounded-lg ${b.cls} font-bold text-white shadow-sm">${b.glyph}</span>`;
+}
+
+function chatProviderBadge(isActive, hasKey, large = false) {
+  const pad = large ? "px-2.5 py-1 text-[11px]" : "px-2 py-0.5 text-[10px]";
+  if (isActive)
+    return `<span class="inline-flex shrink-0 rounded-full bg-emerald-500/10 ${pad} font-semibold text-emerald-600 dark:text-emerald-400">Active</span>`;
+  if (hasKey)
+    return `<span class="inline-flex shrink-0 rounded-full bg-primary/10 ${pad} font-semibold text-primary">Key saved</span>`;
+  return `<span class="inline-flex shrink-0 rounded-full bg-muted ${pad} text-muted-foreground">No key</span>`;
+}
+let knowledge = [];
+
+// Tiny safe markdown → HTML (input is escaped first; only fixed tags are emitted)
+function mdInline(s) {
+  let t = escapeHtml(s);
+  t = t.replace(/`([^`\n]+)`/g, "<code>$1</code>");
+  t = t.replace(/\[([^\]\n]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener noreferrer">$1</a>');
+  t = t.replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>");
+  t = t.replace(/(^|[^*\s])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+  return t;
+}
+
+function mdToHtml(raw) {
+  const lines = String(raw || "").replace(/\r\n?/g, "\n").split("\n");
+  let html = "";
+  let buf = [];
+  let inList = null;
+  let inPre = false;
+  let preBuf = [];
+  let tableBuf = null;
+  const flush = () => {
+    if (buf.length) {
+      html += "<p>" + buf.join("<br>") + "</p>";
+      buf = [];
+    }
+  };
+  const flushList = () => {
+    if (inList) {
+      html += "</" + inList + ">";
+      inList = null;
+    }
+  };
+  const flushTable = () => {
+    if (tableBuf && tableBuf.length) {
+      html += renderMarkdownTable(tableBuf, tableBuf.isHeader);
+      tableBuf = null;
+    }
+  };
+  for (const line of lines) {
+    if (line.trim().startsWith("```")) {
+      if (!inPre) {
+        flushTable();
+        flush();
+        flushList();
+        inPre = true;
+        preBuf = [];
+      } else {
+        html += "<pre>" + escapeHtml(preBuf.join("\n")) + "</pre>";
+        inPre = false;
+      }
+      continue;
+    }
+    if (inPre) {
+      preBuf.push(line);
+      continue;
+    }
+    const mHead = line.match(/^(#{1,4})\s+(.*)/);
+    const mUl = line.match(/^\s*(?:[-*+])\s+(.*)/);
+    const mOl = line.match(/^\s*\d+[.)]\s+(.*)/);
+    const mQ = line.match(/^\s*>\s?(.*)/);
+    const mTable = line.match(/^\|(.+)\|$/);
+    const mTableSep = line.match(/^\|(?:\s*[-:]+\s*\|)+$/);
+    if (mTable || mTableSep) {
+      flushList();
+      flush();
+      if (!tableBuf) tableBuf = [];
+      if (mTableSep) {
+        tableBuf.isHeader = true;
+      } else {
+        tableBuf.push(line);
+      }
+      continue;
+    }
+    flushTable();
+    const mBy = line.match(/^__agentby__(.+?)__(.+?)__(.*)$/);
+    if (mBy) {
+      flushList();
+      flush();
+      html += agentByFooterHTML(mBy[1], mBy[2], mBy[3]);
+    } else if (mHead) {
+      flushList();
+      flush();
+      const lv = mHead[1].length + 2;
+      html += `<h${lv}>${mdInline(mHead[2])}</h${lv}>`;
+    } else if (mUl || mOl) {
+      const tag = mUl ? "ul" : "ol";
+      if (inList !== tag) {
+        flushList();
+        html += "<" + tag + ">";
+        inList = tag;
+      }
+      html += "<li>" + mdInline((mUl || mOl)[1]) + "</li>";
+    } else if (mQ) {
+      flushList();
+      flush();
+      html += "<blockquote>" + mdInline(mQ[1]) + "</blockquote>";
+    } else if (line.trim() === "") {
+      flushList();
+      flush();
+    } else {
+      flushList();
+      buf.push(mdInline(line));
+    }
+  }
+  flushTable();
+  flushList();
+  flush();
+  if (inPre) html += "<pre>" + escapeHtml(preBuf.join("\n")) + "</pre>";
+  return html || "";
+}
+
+function renderMarkdownTable(rows, hasHeader) {
+  if (!rows || !rows.length) return "";
+  const parseRow = (r) => r.split("|").slice(1, -1).map(c => c.trim());
+  const header = parseRow(rows[0]);
+  const bodyRows = rows.slice(hasHeader ? 1 : 0).map(parseRow);
+  let out = '<div class="md-table-wrap"><table class="md-table">';
+  if (hasHeader || header.some(h => h)) {
+    out += "<thead><tr>";
+    for (const h of header) out += `<th>${escapeHtml(h)}</th>`;
+    out += "</tr></thead>";
+  }
+  if (bodyRows.length) {
+    out += "<tbody>";
+    for (const r of bodyRows) {
+      out += "<tr>";
+      for (const c of r) out += `<td>${escapeHtml(c)}</td>`;
+      out += "</tr>";
+    }
+    out += "</tbody>";
+  }
+  out += "</table></div>";
+  return out;
+}
+
+function agentByFooterHTML(name, icon, role) {
+  const ic = icon ? pageIconHTML(icon, "h-3.5 w-3.5") : "";
+  const roleHtml = role ? `<span class="cab-role">${escapeHtml(role)}</span>` : "";
+  return (
+    `<div class="chat-agent-by" style="--chip-h:${agentHue(name)}">${ic ? `<span class="cab-ic">${ic}</span>` : ""}` +
+    `<span class="cab-name">${escapeHtml(name)}</span>` +
+    roleHtml +
+    `<span class="cab-tag">Replied</span></div>`
+  );
+}
+
+function chatModelShort(label) {
+  return (label || "").replace(/\s*\(.*\)\s*$/, "") || "Cloud AI";
+}
+
+function chatSourceChip(t) {
+  if (t === "local_rag")
+    return `<span class="inline-flex items-center gap-1 rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg>Office rules</span>`;
+  if (t === "cloud_llm")
+    return `<span class="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m18 16 4-4-4-4"/><path d="m6 8-4 4 4 4"/><path d="m14.5 4-5 16"/></svg>${escapeHtml(chatModelShort(chatModels.active_label))}</span>`;
+  if (t === "agent_action")
+    return `<span class="inline-flex items-center gap-1 rounded-full bg-cyan-500/10 px-2 py-0.5 text-[10px] font-semibold text-cyan-600 dark:text-cyan-400"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>Agent action</span>`;
+  if (t === "agent_ask")
+    return `<span class="inline-flex items-center gap-1 rounded-full bg-amber-500/10 px-2 py-0.5 text-[10px] font-semibold text-amber-600 dark:text-amber-400"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><path d="M12 17h.01"/></svg>Agent ask</span>`;
+  if (t === "error")
+    return `<span class="inline-flex items-center gap-1 rounded-full bg-destructive/10 px-2 py-0.5 text-[10px] font-semibold text-destructive"><svg xmlns="http://www.w3.org/2000/svg" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg>Error</span>`;
+  return "";
+}
+
+function chatStatus(text) {
+  const el = $("#chat-status");
+  if (el) el.textContent = text;
+}
+
+// ---- Live agent node tracker (SSE) ----
+
+const CHAT_FLOW_NODES = [
+  {
+    id: "input",
+    label: "User Input",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#3b82f6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>',
+  },
+  {
+    id: "rag",
+    label: "SQLite RAG",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#a78bfa" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5v14a9 3 0 0 0 18 0V5"/><path d="M3 12a9 3 0 0 0 18 0"/></svg>',
+  },
+  {
+    id: "agents",
+    label: "Agents",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#8b5cf6" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="8" cy="8" r="4"/><circle cx="18" cy="9" r="3"/><path d="M2 21v-1a6 6 0 0 1 6-6"/><path d="M16 20v-1a4 4 0 0 0-3-3.87"/><path d="M18 4l1 2 2 1-2 1-1 2-1-2-2-1 2-1z"/></svg>',
+  },
+  {
+    id: "llm",
+    label: "Cloud LLM",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#f59e0b" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9.937 15.5A2 2 0 0 0 8.5 14.063l-6.135-1.582a.5.5 0 0 1 0-.962L8.5 9.936A2 2 0 0 0 9.937 8.5l1.582-6.135a.5.5 0 0 1 .963 0L14.063 8.5A2 2 0 0 0 15.5 9.937l6.135 1.581a.5.5 0 0 1 0 .964L15.5 14.063a2 2 0 0 0-1.437 1.437l-1.582 6.135a.5.5 0 0 1-.963 0z"/><path d="M20 3v4"/><path d="M22 5h-4"/></svg>',
+  },
+  {
+    id: "agent",
+    label: "Actions Agent",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#06b6d4" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.7 6.3a1 1 0 0 0 0 1.4l1.6 1.6a1 1 0 0 0 1.4 0l3.77-3.77a6 6 0 0 1-7.94 7.94l-6.91 6.91a2.12 2.12 0 0 1-3-3l6.91-6.91a6 6 0 0 1 7.94-7.94l-3.76 3.76z"/></svg>',
+  },
+  {
+    id: "response",
+    label: "Response",
+    icon: '<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="none" stroke="#34d399" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="4 17 10 11 4 5"/><line x1="12" y1="19" x2="20" y2="19"/></svg>',
+  },
+];
+
+function chatFlowNodeHTML(id, label, icon) {
+  return `<div class="chat-flow-node" data-flow-node="${id}" data-label="${escapeHtml(label)}" title="${escapeHtml(label)}">
+    <span class="chat-flow-icon">${icon}</span>
+    <span class="chat-flow-body">
+      <span class="chat-flow-label">${escapeHtml(label)}</span>
+      <span class="chat-flow-status">waiting</span>
+    </span>
+    <span class="chat-flow-dot"></span>
+  </div>`;
+}
+
+function chatFlowConnectorHTML(toId) {
+  return `<span class="chat-flow-connector" data-flow-to="${toId}">
+    <span class="chat-flow-wire"><span class="chat-flow-packet"></span></span>
+  </span>`;
+}
+
+function renderChatFlow() {
+  const track = document.querySelector("#chat-flow .chat-flow-track");
+  if (!track) return;
+  const nodes = CHAT_FLOW_NODES.filter((n) => chatAgentEnabled || (n.id !== "agent" && n.id !== "agents"));
+  track.innerHTML = nodes
+    .map((n, i) => (i ? chatFlowConnectorHTML(n.id) : "") + chatFlowNodeHTML(n.id, n.label, n.icon))
+    .join("");
+}
+
+function showChatFlow() {
+  const el = $("#chat-flow");
+  if (el) el.style.display = "flex";
+}
+
+function chatFlowPhase(text) {
+  const el = $("#chat-flow-live");
+  if (!el) return;
+  el.textContent = text;
+  el.classList.toggle("live-working", text === "working");
+}
+
+function chatFlowStatusText(status) {
+  if (status === "running") return "running";
+  if (status === "success") return "done";
+  if (status === "error") return "failed";
+  if (status === "skipped") return "skipped";
+  return "waiting";
+}
+
+function chatFlowReset() {
+  document.querySelectorAll(".chat-flow-node").forEach((n) => {
+    n.classList.remove("flow-running", "flow-success", "flow-error", "flow-skipped", "flow-has-agents");
+    const ag = n.querySelector(".chat-flow-agents");
+    if (ag) ag.remove();
+    n.title = n.dataset.label || "";
+    const st = n.querySelector(".chat-flow-status");
+    if (st) st.textContent = "waiting";
+  });
+  document.querySelectorAll(".chat-flow-connector").forEach((c) => c.classList.remove("active", "done"));
+  chatFlowPhase("idle");
+}
+
+function chatFlowSet(nodeId, status, data) {
+  const el = document.querySelector(`.chat-flow-node[data-flow-node="${nodeId}"]`);
+  if (!el) return;
+  const st = el.querySelector(".chat-flow-status");
+  el.classList.remove("flow-running", "flow-success", "flow-error", "flow-skipped");
+  el.classList.add("flow-" + status);
+  if (st) st.textContent = chatFlowStatusText(status);
+  const conn = document.querySelector(`.chat-flow-connector[data-flow-to="${nodeId}"]`);
+  if (conn) {
+    conn.classList.remove("active", "done");
+    if (status === "running") conn.classList.add("active");
+    else if (status === "success") conn.classList.add("done");
+  }
+  const agentsWrap = el.querySelector(".chat-flow-agents");
+  if (agentsWrap) agentsWrap.remove();
+  if (data && data.agents && data.agents.length) {
+    const w = document.createElement("span");
+    w.className = "chat-flow-agents";
+    w.innerHTML = data.agents.map((ag) => {
+      const isObj = ag && typeof ag === "object";
+      const name = escapeHtml(isObj ? ag.name : String(ag));
+      const icon = isObj && ag.icon ? pageIconHTML(ag.icon, "h-3 w-3") : "";
+      return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon}<span>${name}</span></span>`;
+    }).join("");
+    const body = el.querySelector(".chat-flow-body");
+    if (body) body.appendChild(w);
+  }
+  const note = (data && (data.error || data.note)) || "";
+  el.title = note ? `${el.dataset.label || ""} \u2014 ${note}` : el.dataset.label || "";
+}
+
+function showChatMain(show) {
+  const listCol = $("#chat-sessions-col");
+  const main = $("#chat-main");
+  if (!listCol || !main) return;
+  if (window.innerWidth < 768) {
+    listCol.style.display = show ? "none" : "flex";
+    main.style.display = show ? "flex" : "none";
+    if (show) listCol.classList.remove("sessions-collapsed");
+    syncChatToggle();
+    return;
+  }
+  listCol.style.display = "flex";
+  main.style.display = "flex";
+  syncChatToggle();
+}
+
+function toggleChatSessions() {
+  const col = $("#chat-sessions-col");
+  if (!col) return;
+  col.classList.toggle("sessions-collapsed");
+  if (col.classList.contains("sessions-collapsed")) {
+    col.style.display = "flex";
+  }
+  syncChatToggle();
+}
+
+function syncChatToggle() {
+  const btn = $("#chat-toggle-sessions");
+  const col = $("#chat-sessions-col");
+  if (!btn || !col) return;
+  const visible = !col.classList.contains("sessions-collapsed") && col.style.display !== "none";
+  btn.classList.toggle("active", visible);
+  btn.setAttribute("aria-pressed", String(visible));
+}
+
+function renderChatSessions() {
+  const box = $("#chat-sessions");
+  if (!box) return;
+  box.innerHTML = chatSessions.length
+    ? chatSessions
+        .map(
+          (s) => `
+      <div class="${s.id === chatActiveSession ? "rounded-lg bg-accent" : "rounded-lg hover:bg-accent/60"}">
+        <button type="button" class="group flex w-full items-center gap-2 rounded-lg px-2.5 py-2 text-left" data-open-session="${s.id}" title="${escapeHtml(s.title || "New chat")}">
+          <svg class="shrink-0 text-muted-foreground" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+          <span class="min-w-0 flex-1">
+            <span class="block truncate text-sm font-medium">${escapeHtml(s.title || "New chat")}</span>
+            <span class="block text-[10px] text-muted-foreground">${relTime(s.updated_at)}</span>
+          </span>
+          <span class="shrink-0 opacity-0 transition-opacity group-hover:opacity-100" data-del-session="${s.id}" title="Delete conversation">
+            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground hover:text-destructive"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+          </span>
+        </button>
+      </div>`
+        )
+        .join("")
+    : `<p class="px-3 py-10 text-center text-xs text-muted-foreground">No conversations yet</p>`;
+  box.querySelectorAll("[data-open-session]").forEach((b) => b.addEventListener("click", () => chatOpenSession(b.dataset.openSession)));
+  box.querySelectorAll("[data-del-session]").forEach((b) =>
+    b.addEventListener("click", (e) => {
+      e.stopPropagation();
+      const sid = b.dataset.delSession;
+      const s = chatSessions.find((x) => x.id === sid);
+      if (!s) return;
+      confirmDialog(`Delete "${s.title || "This conversation"}"?`, async () => {
+        try {
+          await api(`/api/chat/sessions/${encodeURIComponent(sid)}`, { method: "DELETE" });
+          chatSessions = chatSessions.filter((x) => x.id !== sid);
+          if (chatActiveSession === sid) {
+            chatActiveSession = null;
+            chatMessages = [];
+          }
+          renderChatSessions();
+          renderChatMessages();
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    })
+  );
+}
+
+function renderChatMessages() {
+  const box = $("#chat-messages");
+  if (!box) return;
+  const titleEl = $("#chat-title");
+  const s = chatSessions.find((x) => x.id === chatActiveSession);
+  if (titleEl) titleEl.textContent = s ? s.title || "New chat" : "New chat";
+  showChatMain(!!chatActiveSession);
+  if (!chatActiveSession) {
+    box.innerHTML = `
+      <div class="flex h-full flex-col items-center justify-center gap-3 p-8 text-center">
+        <svg xmlns="http://www.w3.org/2000/svg" width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <div>
+          <p class="text-sm font-medium">Start a conversation</p>
+          <p class="mt-1 max-w-sm text-xs text-muted-foreground">Ask about your office billing rules — answers come from the Knowledge Base or Gemini cloud AI (labelled on every reply).</p>
+        </div>
+        <button type="button" class="btn btn-primary btn-sm" data-chat-new>New chat</button>
+      </div>`;
+    box.querySelector("[data-chat-new]")?.addEventListener("click", chatNewSession);
+    chatStatus("");
+    return;
+  }
+  box.innerHTML = chatMessages.length
+    ? chatMessages
+        .map(
+          (m) => `
+      <div class="flex ${m.sender === "user" ? "justify-end" : "justify-start"}">
+        <div class="max-w-[85%] rounded-2xl px-4 py-2.5 text-sm leading-relaxed ${m.sender === "user" ? "rounded-br-sm bg-primary text-primary-foreground" : "rounded-bl-sm bg-accent text-accent-foreground"}">
+          ${m.sender === "assistant" ? `<div class="mb-1 flex items-center gap-1.5">${chatSourceChip(m.source_type)}</div>` : ""}
+          <div class="md-body whitespace-pre-wrap">${m.sender === "assistant" ? mdToHtml(m.message) : escapeHtml(m.message)}</div>
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<p class="px-4 py-8 text-center text-xs text-muted-foreground">Say hello to get started — or ask about a specific billing rule.</p>`;
+  box.scrollTop = box.scrollHeight;
+}
+
+function chatSetBusy(busy) {
+  chatBusy = busy;
+  const send = $("#chat-send-btn");
+  const input = $("#chat-input");
+  if (send) send.disabled = busy;
+  if (input) input.disabled = busy;
+  chatStatus(busy ? `Asking ${chatModelShort(chatModels.active_label)}…` : "");
+}
+
+async function loadChat() {
+  try {
+    chatSessions = await api("/api/chat/sessions");
+  } catch (e) {
+    toast(e.message, "error");
+    return;
+  }
+  chatActiveSession = null;
+  chatMessages = [];
+  chatFlowReset();
+  renderChatSessions();
+  renderChatMessages();
+}
+
+async function chatOpenSession(sid) {
+  try {
+    const msgs = await api(`/api/chat/sessions/${encodeURIComponent(sid)}/messages`);
+    chatActiveSession = sid;
+    chatMessages = msgs;
+    chatFlowReset();
+    renderChatSessions();
+    renderChatMessages();
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function chatNewSession() {
+  try {
+    const s = await api("/api/chat/sessions", { method: "POST", body: JSON.stringify({}) });
+    chatSessions.unshift(s);
+    chatActiveSession = s.id;
+    chatMessages = [];
+    renderChatSessions();
+    renderChatMessages();
+    setTimeout(() => {
+      const input = $("#chat-input");
+      if (input) {
+        input.value = "";
+        input.focus();
+      }
+    }, 60);
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+const CHAT_ATTACH_TYPES = ["image/png", "image/jpeg", "image/webp", "image/gif", "application/pdf"];
+const CHAT_ATTACH_MAX = 6;
+
+function readFileAsDataURL(file) {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(reader.result);
+    reader.onerror = () => reject(reader.error);
+    reader.readAsDataURL(file);
+  });
+}
+
+function chatAttachThumb(a) {
+  if (a.kind === "pdf") {
+    return `<svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M9 15h6"/><path d="M9 11h2"/></svg>`;
+  }
+  if (a.thumb) return `<img src="${a.thumb}" alt="" class="h-10 w-10 rounded-md object-cover">`;
+  return `<div class="flex h-10 w-10 items-center justify-center rounded-md bg-primary/10 text-primary text-[10px] font-bold">IMG</div>`;
+}
+
+function renderChatAttachStrip() {
+  const strip = $("#chat-attach-strip");
+  if (!strip) return;
+  if (chatAttachments.length === 0) {
+    strip.classList.add("hidden");
+    strip.innerHTML = "";
+    return;
+  }
+  strip.classList.remove("hidden");
+  strip.innerHTML = "";
+  chatAttachments.forEach((a, i) => {
+    const pill = document.createElement("div");
+    pill.className = "flex items-center gap-2 rounded-lg border border-border bg-background px-2 py-1";
+    pill.innerHTML = `${chatAttachThumb(a)}<span class="max-w-[140px] truncate text-xs text-foreground" title="${a.filename.replace(/"/g, "&quot;")}">${a.filename}</span>
+      <button type="button" class="badge flex h-4 w-4 items-center justify-center rounded-full text-muted-foreground hover:text-destructive" title="Remove">
+        <svg xmlns="http://www.w3.org/2000/svg" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>`;
+    pill.querySelector("button").addEventListener("click", () => {
+      chatAttachments.splice(i, 1);
+      renderChatAttachStrip();
+    });
+    strip.appendChild(pill);
+  });
+}
+
+async function chatAttachFiles(files) {
+  const list = Array.from(files || []);
+  if (!list.length) return;
+  for (const file of list) {
+    if (chatAttachments.length >= CHAT_ATTACH_MAX) {
+      toast(`Max ${CHAT_ATTACH_MAX} attachments`, "error");
+      return;
+    }
+    if (!CHAT_ATTACH_TYPES.includes(file.type)) {
+      toast(`"${file.name}" is not supported. Use PNG, JPG, WebP or PDF.`, "error");
+      continue;
+    }
+    chatAttaching = true;
+    try {
+      const fd = new FormData();
+      fd.append("file", file, file.name);
+      const res = await api("/api/chat/upload", { method: "POST", body: fd });
+      const att = { token: res.token, filename: file.name, kind: res.kind, thumb: null };
+      // Image preview: base64 data URL so it passes the img-src data: CSP rule
+      // (blob: URLs would be blocked). PDF files get the fallback SVG icon.
+      if (res.kind === "image") {
+        try {
+          att.thumb = await readFileAsDataURL(file);
+        } catch (e) {
+          att.thumb = null;
+        }
+      }
+      chatAttachments.push(att);
+    } catch (e) {
+      toast(e.message, "error");
+    } finally {
+      chatAttaching = false;
+    }
+  }
+  renderChatAttachStrip();
+}
+
+async function chatSend() {
+  if (chatBusy || chatAttaching) return;
+  const input = $("#chat-input");
+  const text = (input ? input.value : "").trim();
+  if (!text && chatAttachments.length === 0) return;
+  if (!chatActiveSession) await chatNewSession();
+  if (!chatActiveSession) return;
+  input.value = "";
+  input.style.height = "";
+  chatSetBusy(true);
+  showChatFlow();
+  chatFlowReset();
+  chatFlowPhase("working");
+  const sid = chatActiveSession;
+  chatMessages.push({ id: "pending-" + Date.now(), sender: "user", message: text || "\uD83D\uDCCE Attachment", source_type: "", created_at: new Date().toISOString() });
+  renderChatMessages();
+  const attTokens = chatAttachments.map((a) => a.token);
+  const clearAtts = chatAttachments.slice();
+  chatAttachments = [];
+  renderChatAttachStrip();
+  let done = false;
+  let streamUrl = `/api/chat/sessions/${encodeURIComponent(sid)}/stream?q=${encodeURIComponent(text)}&p=${encodeURIComponent(JSON.stringify(getPortals()))}`;
+  if (attTokens.length) streamUrl += `&a=${encodeURIComponent(JSON.stringify(attTokens))}`;
+  const es = new EventSource(streamUrl);
+  const finish = (userError) => {
+    es.close();
+    done = true;
+    chatMessages = chatMessages.filter((m) => !(m.id && String(m.id).startsWith("pending-")));
+    chatSetBusy(false);
+    chatFlowReset();
+    if (userError) toast(userError, "error");
+    renderChatMessages();
+    setTimeout(() => {
+      const i = $("#chat-input");
+      if (i) i.focus();
+    }, 30);
+  };
+  es.onmessage = (ev) => {
+    let data;
+    try {
+      data = JSON.parse(ev.data);
+    } catch {
+      return;
+    }
+    if (data.node && data.status) {
+      chatFlowSet(data.node, data.status, data);
+      return;
+    }
+    if (done || !data.event || data.event !== "final") return;
+    if (data.user) chatMessages.push(data.user);
+    if (data.assistant) chatMessages.push(data.assistant);
+    if (data.session) {
+      const existing = chatSessions.find((s) => s.id === sid);
+      if (existing) Object.assign(existing, data.session);
+      else chatSessions.unshift(data.session);
+    }
+    chatSessions.sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+    renderChatSessions();
+    finish();
+  };
+  es.onerror = () => {
+    if (!done) finish("Connection lost \u2014 the message may not have been saved. Check server logs.");
+  };
+}
+
+function initChat() {
+  renderChatFlow();
+  syncChatToggle();
+  const form = $("#chat-form");
+  if (form) form.addEventListener("submit", (e) => { e.preventDefault(); chatSend(); });
+  $("#chat-new-btn")?.addEventListener("click", chatNewSession);
+  $("#chat-toggle-sessions")?.addEventListener("click", toggleChatSessions);
+  $("#chat-back-btn")?.addEventListener("click", () => showChatMain(false));
+  const agentBtn = $("#chat-agent-toggle");
+  if (agentBtn) agentBtn.addEventListener("click", toggleChatAgent);
+  const liveBtn = $("#chat-live-toggle");
+  if (liveBtn) liveBtn.addEventListener("click", toggleChatLive);
+  $("#chat-delete-btn")?.addEventListener("click", () => {
+    if (!chatActiveSession) return;
+    const s = chatSessions.find((x) => x.id === chatActiveSession);
+    if (!s) return;
+    confirmDialog(`Delete "${s.title || "This conversation"}"?`, async () => {
+      try {
+        await api(`/api/chat/sessions/${encodeURIComponent(chatActiveSession)}`, { method: "DELETE" });
+        chatSessions = chatSessions.filter((x) => x.id !== chatActiveSession);
+        chatActiveSession = null;
+        chatMessages = [];
+        renderChatSessions();
+        renderChatMessages();
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  });
+  $("#chat-clear-all-btn")?.addEventListener("click", () => {
+    if (!chatSessions.length) return;
+    confirmDialog(`Delete all ${chatSessions.length} conversations? This cannot be undone.`, async () => {
+      try {
+        const res = await api("/api/chat/sessions", { method: "DELETE" });
+        chatSessions = [];
+        chatActiveSession = null;
+        chatMessages = [];
+        renderChatSessions();
+        renderChatMessages();
+        toast(`Deleted ${res.deleted || 0} conversations`, "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    }, "Delete all");
+  });
+  const input = $("#chat-input");
+  if (input) {
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter" && !e.shiftKey) {
+        e.preventDefault();
+        chatSend();
+      }
+    });
+    input.addEventListener("input", () => {
+      input.style.height = "auto";
+      input.style.height = Math.min(input.scrollHeight, 160) + "px";
+    });
+  }
+  const attachBtn = $("#chat-attach-btn");
+  const attachInput = $("#chat-attach-input");
+  if (attachBtn && attachInput) {
+    attachBtn.addEventListener("click", () => attachInput.click());
+    attachInput.addEventListener("change", async () => {
+      await chatAttachFiles(attachInput.files);
+      attachInput.value = "";
+    });
+  }
+  if (form) {
+    form.addEventListener("dragenter", (e) => { e.preventDefault(); form.classList.add("drag-over"); });
+    form.addEventListener("dragover", (e) => { e.preventDefault(); });
+    form.addEventListener("dragleave", () => form.classList.remove("drag-over"));
+    form.addEventListener("drop", async (e) => {
+      e.preventDefault();
+      form.classList.remove("drag-over");
+      await chatAttachFiles(e.dataTransfer ? e.dataTransfer.files : []);
+    });
+  }
+  loadChatModels();
+  loadAgentSetting();
+}
+
+const AGENT_CHIP_HUES = [0, 20, 40, 60, 90, 120, 150, 180, 200, 220, 240, 260, 280, 300, 320, 345];
+
+function agentHue(ag) {
+  const name = ag && typeof ag === "object" ? ag.name : ag;
+  const key = String(name || "");
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 131 + key.charCodeAt(i)) >>> 0;
+  return AGENT_CHIP_HUES[h % AGENT_CHIP_HUES.length];
+}
+
+function agentChipHTML(ag) {
+  const isObj = ag && typeof ag === "object";
+  const name = escapeHtml(isObj ? ag.name : String(ag));
+  const icon = isObj && ag.icon ? pageIconHTML(ag.icon, "h-3 w-3") : "";
+  return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon}<span>${name}</span></span>`;
+}
+
+function chatSubtitleText(names, enabled) {
+  if (chatLive) return `<span class="text-emerald-600 dark:text-emerald-400 font-medium">Live Chat with AI \u2014 general AI, no medical-billing restriction</span>`;
+  const ready = (names && names.length) ? names : null;
+  if (ready && enabled) return `Agents ready to respond: ${ready.map(agentChipHTML).join("")}`;
+  if (ready) return `Agents ready: ${ready.map(agentChipHTML).join("")} \u2014 enable Agent to use them`;
+  return "Answers from your notes, pages & guidelines";
+}
+
+function updateChatSubtitle(names) {
+  const el = $("#chat-subtitle");
+  if (el) el.innerHTML = chatSubtitleText(names, chatAgentEnabled);
+}
+
+async function loadAgentSetting() {
+  try {
+    const res = await api("/api/chat/agent");
+    chatAgentEnabled = !!res.enabled;
+    chatLive = !!res.live;
+    updateChatSubtitle(res.active || []);
+  } catch {
+    chatAgentEnabled = false;
+  }
+  const btn = $("#chat-agent-toggle");
+  if (btn) {
+    btn.setAttribute("aria-pressed", chatAgentEnabled ? "true" : "false");
+    btn.title = chatAgentEnabled
+      ? "Actions Agent is ON \u2014 I can add/edit/delete your tasks, notes, pages, schedule, guidelines & conversations."
+      : "Actions Agent is OFF \u2014 I only answer. Turn it on to let me change your app data.";
+  }
+  const liveBtn = $("#chat-live-toggle");
+  if (liveBtn) {
+    liveBtn.setAttribute("aria-pressed", chatLive ? "true" : "false");
+    liveBtn.title = chatLive
+      ? "Live Chat with AI is ON \u2014 I answer like ChatGPT/Gemini in a browser (no medical-billing restriction, translate & general chat work)."
+      : "Live Chat with AI is OFF \u2014 I answer as the current agent. Turn it on for general AI mode.";
+  }
+  renderChatFlow();
+}
+
+async function toggleChatLive() {
+  const btn = $("#chat-live-toggle");
+  const next = !chatLive;
+  try {
+    const res = await api("/api/chat/live", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: next }),
+    });
+    chatLive = !!res.enabled;
+    if (btn) btn.setAttribute("aria-pressed", chatLive ? "true" : "false");
+    updateChatSubtitle((await api("/api/chat/agent")).active || []);
+    toast(
+      chatLive
+        ? "Live Chat with AI ON \u2014 general AI mode (no medical-billing restriction)."
+        : "Live Chat with AI OFF \u2014 back to the normal agent behaviour.",
+      "success"
+    );
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+async function toggleChatAgent() {
+  const btn = $("#chat-agent-toggle");
+  const next = !chatAgentEnabled;
+  try {
+    const res = await api("/api/chat/agent", {
+      method: "PUT",
+      body: JSON.stringify({ enabled: next }),
+    });
+    chatAgentEnabled = !!res.enabled;
+    if (btn) btn.setAttribute("aria-pressed", chatAgentEnabled ? "true" : "false");
+    updateChatSubtitle(res.active || []);
+    renderChatFlow();
+    toast(
+      chatAgentEnabled
+        ? "Actions Agent ON \u2014 say things like \u201cadd a task\u201d, \u201cedit my note\u201d, \u201cdelete the conversation about\u2026\u201d."
+        : "Actions Agent OFF \u2014 I now only answer questions.",
+      "success"
+    );
+  } catch (err) {
+    toast(err.message, "error");
+  }
+}
+
+// ---------- Agents page ----------
+let agentsState = { agents: [], enabled: false, active_id: null, active_ids: [], loading: false };
+let agentsNewIcon = "";
+
+function agentActiveBadge(isActive) {
+  return `<span class="inline-flex shrink-0 rounded-full ${isActive ? "bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400" : "bg-muted px-2 py-0.5 text-[10px] text-muted-foreground"}">${isActive ? "Active" : "Inactive"}</span>`;
+}
+
+async function loadAgents() {
+  if (agentsState.loading) return;
+  agentsState.loading = true;
+  try {
+    const [agents, agent] = await Promise.all([api("/api/agents"), api("/api/chat/agent")]);
+    agentsState.agents = agents.agents || [];
+    agentsState.active_id = agents.active_id ?? agent.active_id ?? null;
+    agentsState.active_ids = Array.isArray(agents.active_ids) ? agents.active_ids : [];
+    agentsState.enabled = !!agent.enabled;
+  } catch (err) {
+    toast(err.message, "error");
+  }
+  agentsState.loading = false;
+  renderAgents();
+}
+
+function renderAgents() {
+  const grid = $("#agents-grid");
+  const empty = $("#agents-empty");
+  const btn = $("#agents-master-toggle");
+  const status = $("#agents-master-status");
+  const en = !!agentsState.enabled;
+  const activeMap = {};
+  (Array.isArray(agentsState.active_ids) ? agentsState.active_ids : []).forEach((i) => { activeMap[i] = true; });
+  const activeAgents = (agentsState.agents || []).filter((a) => activeMap[a.id]);
+  const activeNames = activeAgents.map((a) => a.name);
+  if (btn) btn.setAttribute("aria-pressed", en ? "true" : "false");
+  if (status) {
+    if (en && activeNames.length) status.textContent = `Agents ready to respond: ${activeNames.join(", ")}`;
+    else if (en) status.textContent = "Agent is ON \u2014 Chat can add / edit / delete your data";
+    else status.textContent = "Agent is OFF \u2014 Chat only answers questions";
+  }
+  updateChatSubtitle(activeAgents);
+  if (!grid || !empty) return;
+  const agents = agentsState.agents || [];
+  empty.classList.toggle("hidden", !!agents.length);
+  grid.innerHTML = agents.map((a) => {
+    const isActive = !!activeMap[a.id];
+    const initials = escapeHtml((a.name || "?").slice(0, 1).toUpperCase());
+    const tileIcon = a.icon
+      ? `${pageIconHTML(a.icon, "h-9 w-9")}`
+      : `<span class="inline-flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/10 text-sm font-bold text-primary">${initials}</span>`;
+    return `
+      <div class="flex flex-col rounded-xl border border-border bg-card/60 p-4 transition-all ${isActive ? "border-emerald-500/50 shadow-lg" : "hover:border-primary/40"}" data-agent-row="${a.id}">
+        <div class="flex w-full items-start justify-between gap-2">
+          <div class="flex min-w-0 items-center gap-2.5">
+            ${tileIcon}
+            <div class="min-w-0">
+              <p class="truncate text-sm font-semibold">${escapeHtml(a.name)}</p>
+              ${agentActiveBadge(isActive)}
+            </div>
+          </div>
+          <button type="button" role="switch" aria-checked="${isActive ? "true" : "false"}" data-act="toggle" data-id="${a.id}" title="${isActive ? "Turn off" : "Use this agent"}"
+            class="inline-flex shrink-0 items-center gap-1.5 rounded-full border px-3 py-1.5 text-[11px] font-semibold transition-colors ${isActive ? "border-emerald-500/40 bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "border-border bg-muted text-muted-foreground hover:border-primary/40 hover:text-foreground"}">
+            <span class="h-2 w-2 rounded-full ${isActive ? "bg-emerald-500" : "bg-muted-foreground/40"}"></span>
+            <span>${isActive ? "ON" : "OFF"}</span>
+          </button>
+        </div>
+        <p class="mt-3 w-full text-xs leading-relaxed text-muted-foreground">${a.description ? escapeHtml(a.description) : '<i class="opacity-70">Koi kaam/description nahi likhi</i>'}</p>
+        <div class="mt-2 flex w-full flex-1 flex-col rounded-lg border border-border/70 bg-background/40 p-2.5">
+          <p class="mb-1 text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Qabliyat / Instructions</p>
+          ${a.system_prompt
+            ? `<p class="max-h-28 w-full overflow-auto whitespace-pre-wrap break-words text-[11px] leading-relaxed text-foreground/80">${escapeHtml(a.system_prompt)}</p>`
+            : `<p class="text-[11px] italic text-muted-foreground/70">Koi instructions nahi</p>`}
+        </div>
+        <div class="mt-3 flex w-full items-center gap-1.5 border-t border-border pt-2.5">
+          <button type="button" class="btn btn-ghost btn-sm" data-act="editstart" data-id="${a.id}">Edit</button>
+          <button type="button" class="btn btn-ghost btn-sm hover:text-destructive" data-act="delete" data-id="${a.id}">Delete</button>
+        </div>
+        <div class="agent-edit mt-3 hidden space-y-2 rounded-lg border border-border p-3" data-edit-row="${a.id}">
+          <div class="flex items-center gap-3">
+            <button type="button" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border bg-card/60 text-lg transition-colors hover:border-primary/50" data-act="pickicon" data-id="${a.id}" title="Icon choose karein">${a.icon ? pageIconHTML(a.icon, "h-5 w-5") : initials}</button>
+            <div class="min-w-0 flex-1">
+              <label class="mb-1 block text-[11px] font-medium text-muted-foreground">Name</label>
+              <input type="text" class="input h-9 w-full" data-edit="name" maxlength="120" value="${escapeHtml(a.name)}" placeholder="Name" />
+            </div>
+          </div>
+          <input type="hidden" data-edit="icon" value="${escapeHtml(a.icon || "")}" />
+          <textarea rows="2" class="input w-full resize-none" data-edit="desc" maxlength="500" placeholder="Ye agent kya karta hai? (work / capacity)">${escapeHtml(a.description || "")}</textarea>
+          <textarea rows="4" class="input w-full resize-y" data-edit="prompt" maxlength="4000" placeholder="Qabliyat / Instructions \u2014 kaise behave aur answer kare?">${escapeHtml(a.system_prompt || "")}</textarea>
+          <div class="flex items-center gap-2">
+            <button type="button" class="btn btn-primary btn-sm" data-act="save" data-id="${a.id}">Save</button>
+            <button type="button" class="btn btn-outline btn-sm" data-act="cancel" data-id="${a.id}">Cancel</button>
+            <span class="text-xs text-muted-foreground" data-edit-status></span>
+          </div>
+        </div>
+      </div>`;
+  }).join("");
+}
+
+async function handleAgentsRowClick(e) {
+  const btn = e.target.closest("[data-act]");
+  if (!btn) return;
+  const id = Number(btn.dataset.id);
+  const act = btn.dataset.act;
+  const agent = agentsState.agents.find((x) => x.id === id);
+  if (act === "toggle") {
+    const turningOn = !(Array.isArray(agentsState.active_ids) ? agentsState.active_ids : []).includes(id);
+    try {
+      if (turningOn) {
+        await api(`/api/agents/${id}/active`, { method: "POST" });
+        agentsState.active_ids = [...((agentsState.active_ids || []).filter((x) => x !== id)), id];
+        if (agentsState.active_id == null) agentsState.active_id = id;
+        if (!agentsState.enabled) {
+          await api("/api/chat/agent", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+          agentsState.enabled = true;
+        }
+        renderAgents();
+        toast(`Agent ON \u2014 \u201c${agent?.name || ""}\u201d ab Chat ke liye ready hai`);
+      } else {
+        await api("/api/agents/off", { method: "POST", body: JSON.stringify({ id }) });
+        agentsState.active_ids = (agentsState.active_ids || []).filter((x) => x !== id);
+        if (agentsState.active_id === id) {
+          agentsState.active_id = agentsState.active_ids[0] ?? null;
+        }
+        renderAgents();
+        toast(`Agent OFF \u2014 \u201c${agent?.name || ""}\u201d ab ready nahi hai`);
+      }
+    } catch (err) {
+      toast(err.message, "error");
+    }
+    return;
+  }
+  const editRow = btn.closest("[data-agent-row]")?.querySelector("[data-edit-row]");
+  const statusEl = editRow?.querySelector("[data-edit-status]");
+  if (act === "editstart") {
+    if (editRow) editRow.classList.remove("hidden");
+  } else if (act === "cancel") {
+    if (editRow) editRow.classList.add("hidden");
+  } else if (act === "pickicon") {
+    openIconPickerDialog((em) => {
+      btn.innerHTML = em ? pageIconHTML(em, "h-5 w-5") : ((agent?.name || "?")[0] || "?").toUpperCase();
+      const holder = btn.closest("[data-agent-row]")?.querySelector('[data-edit="icon"]');
+      if (holder) holder.value = em || "";
+    });
+  } else if (act === "save") {
+    const name = editRow?.querySelector('[data-edit="name"]')?.value.trim() || "";
+    const desc = editRow?.querySelector('[data-edit="desc"]')?.value.trim() || "";
+    const prompt = editRow?.querySelector('[data-edit="prompt"]')?.value.trim() || "";
+    const icon = editRow?.querySelector('[data-edit="icon"]')?.value.trim() || "";
+    if (!name) {
+      toast("Name is required", "error");
+      return;
+    }
+    if (statusEl) statusEl.textContent = "Saving\u2026";
+    try {
+      await api(`/api/agents/${id}`, { method: "PUT", body: JSON.stringify({ name, description: desc, system_prompt: prompt, icon }) });
+      if (editRow) editRow.classList.add("hidden");
+      await loadAgents();
+      toast("Agent updated", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      if (statusEl) statusEl.textContent = "";
+    }
+  } else if (act === "delete") {
+    const a = agentsState.agents.find((x) => x.id === id);
+    confirmDialog(`Delete agent "${a?.name || "this agent"}"?`, async () => {
+      try {
+        await api(`/api/agents/${id}`, { method: "DELETE" });
+        if (agentsState.active_id === id) agentsState.active_id = null;
+        await loadAgents();
+        toast("Agent deleted", "success");
+      } catch (err) {
+        toast(err.message, "error");
+      }
+    });
+  }
+}
+
+function initAgents() {
+  $("#agents-master-toggle")?.addEventListener("click", async () => {
+    const next = !agentsState.enabled;
+    try {
+      const res = await api("/api/chat/agent", { method: "PUT", body: JSON.stringify({ enabled: next }) });
+      agentsState.enabled = !!res.enabled;
+      if (res.active_id != null) agentsState.active_id = res.active_id;
+      renderAgents();
+      toast(agentsState.enabled ? "Actions Agent ON" : "Actions Agent OFF", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+  $("#agent-new-icon-btn")?.addEventListener("click", () => {
+    openIconPickerDialog((em) => {
+      agentsNewIcon = em || "";
+      const btn = $("#agent-new-icon-btn");
+      if (btn) btn.innerHTML = em ? pageIconHTML(em, "h-5 w-5") : "📦";
+    });
+  });
+  $("#agents-add-btn")?.addEventListener("click", async () => {
+    const name = $("#agent-name-input").value.trim();
+    const desc = $("#agent-desc-input").value.trim();
+    const prompt = $("#agent-prompt-input").value.trim();
+    const statusEl = $("#agents-add-status");
+    if (!name) {
+      toast("Agent name is required", "error");
+      return;
+    }
+    if (statusEl) statusEl.textContent = "Creating\u2026";
+    try {
+      await api("/api/agents", { method: "POST", body: JSON.stringify({ name, description: desc, system_prompt: prompt, icon: agentsNewIcon }) });
+      $("#agent-name-input").value = "";
+      $("#agent-desc-input").value = "";
+      $("#agent-prompt-input").value = "";
+      agentsNewIcon = "";
+      const iconBtn = $("#agent-new-icon-btn");
+      if (iconBtn) iconBtn.innerHTML = "📦";
+      if (statusEl) statusEl.textContent = "";
+      await loadAgents();
+      toast("Agent created", "success");
+    } catch (err) {
+      toast(err.message, "error");
+    } finally {
+      if (statusEl) statusEl.textContent = "";
+    }
+  });
+  $("#agents-grid")?.addEventListener("click", handleAgentsRowClick);
+}
+
+// ---------- Chat AI model switching ----------
+
+async function loadChatModels() {
+  try {
+    chatModels = await api("/api/chat/models");
+  } catch (e) {
+    chatModels = { active: "gemini", active_label: "Gemini (Google)", active_model: "", providers: [] };
+  }
+}
+
+// ---------- Chat AI settings page (admin) ----------
+
+async function loadChatSettings() {
+  chatSettingsProvider = "";
+  try {
+    chatSettings = await api("/api/chat/settings");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+  renderChatSettings();
+}
+
+function openChatSettingsProvider(provider) {
+  chatSettingsProvider = provider;
+  window.scrollTo(0, 0);
+  renderChatSettings();
+}
+
+function chatSettingsBack() {
+  chatSettingsProvider = "";
+  renderChatSettings();
+}
+
+function renderChatSettings() {
+  const box = $("#chat-settings-container");
+  if (!box) return;
+  const rows = chatSettings.providers || [];
+  const provider = rows.find((p) => p.provider === chatSettingsProvider);
+  if (provider) {
+    renderChatSettingsDetail(box, provider);
+  } else {
+    renderChatSettingsTiles(box, rows);
+  }
+}
+
+function renderChatSettingsTiles(box, rows) {
+  box.innerHTML = `
+    <div class="space-y-4">
+      <div class="flex flex-wrap items-end justify-between gap-3">
+        <div>
+          <h3 class="card-title">AI Models</h3>
+          <p class="mt-1 max-w-xl text-xs text-muted-foreground">Connect your AI providers \u2014 click a tile to open its settings. The provider marked <span class="font-medium text-emerald-600 dark:text-emerald-400">Active</span> is the one Chat uses.</p>
+        </div>
+        <span class="inline-flex items-center gap-1.5 rounded-full bg-emerald-500/10 px-3 py-1 text-[11px] font-semibold text-emerald-600 dark:text-emerald-400">
+          <span class="h-1.5 w-1.5 rounded-full bg-emerald-500"></span>
+          Active: ${escapeHtml(chatSettings.active_label || "None")}
+        </span>
+      </div>
+      ${
+        rows.length
+          ? `<div class="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        ${rows
+          .map((p) => {
+            const meta = (chatSettings.meta || {})[p.provider] || {};
+            const isActive = chatSettings.active === p.provider;
+            const hasKey = !!p.api_key || ((p.keys || []).length > 0);
+            const modelName = p.model || meta.default_model || "";
+            return `
+        <button type="button" class="group flex flex-col rounded-xl border border-border bg-card/60 p-4 text-left transition-all hover:-translate-y-0.5 hover:border-primary/60 hover:shadow-lg" data-open="${p.provider}">
+          <div class="flex w-full items-center gap-3">
+            ${providerLogo(p.provider)}
+            <div class="min-w-0 flex-1">
+              <p class="truncate text-sm font-semibold">${escapeHtml(meta.label || p.provider)}</p>
+              <p class="text-[11px] text-muted-foreground">${meta.kind === "gemini" ? "Google AI" : "OpenAI-compatible"}</p>
+            </div>
+          </div>
+          <div class="mt-3 w-full">${chatProviderBadge(isActive, hasKey)}</div>
+          <p class="mt-3 w-full truncate text-[11px] text-muted-foreground">Model <span class="font-semibold text-foreground">${escapeHtml(modelName || "not set")}</span></p>
+          <div class="mt-3 flex w-full items-center justify-between border-t border-border pt-2.5">
+            <span class="text-[11px] font-semibold text-primary">Open settings</span>
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="text-muted-foreground transition-transform group-hover:translate-x-0.5"><path d="M5 12h14"/><path d="m12 5 7 7-7 7"/></svg>
+          </div>
+        </button>`;
+          })
+          .join("")}
+      </div>`
+          : `<p class="rounded-xl border border-dashed border-border p-10 text-center text-sm text-muted-foreground">No providers configured.</p>`
+      }
+
+      <div class="card overflow-visible">
+        <div class="card-header flex-wrap gap-2">
+          <div class="min-w-0">
+            <h4 class="text-sm font-semibold">Activity Log <span class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground">errors red &#183; warnings yellow</span></h4>
+            <p class="text-xs text-muted-foreground">Live errors &amp; warnings from your AI calls \u2014 so you can see exactly where a problem is. Refreshes automatically.</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <div class="inline-flex rounded-lg border border-border p-0.5">
+              <button type="button" class="ai-log-level btn btn-ghost btn-sm rounded-md px-2.5 !bg-primary !text-primary-foreground" data-log-level="INFO">All</button>
+              <button type="button" class="ai-log-level btn btn-ghost btn-sm rounded-md px-2.5" data-log-level="WARNING">Warnings</button>
+              <button type="button" class="ai-log-level btn btn-ghost btn-sm rounded-md px-2.5" data-log-level="ERROR">Errors</button>
+            </div>
+            <input id="ai-log-search" type="text" placeholder="Search logs\u2026" class="input h-9 w-36 rounded-lg px-3 py-1 text-xs">
+            <button type="button" class="btn btn-ghost btn-icon" id="ai-log-refresh" title="Refresh logs">
+              <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
+            </button>
+          </div>
+        </div>
+        <div class="px-4 pb-4">
+          <p id="ai-log-empty" class="hidden py-4 text-center text-[11px] text-muted-foreground">No log entries.</p>
+          <ul id="ai-log-list" class="ai-log-list"></ul>
+        </div>
+      </div>
+
+      <div class="card overflow-visible">
+        <div class="card-header flex-wrap gap-2">
+          <div class="min-w-0">
+            <h4 class="text-sm font-semibold">Tools &amp; Routing</h4>
+            <p class="text-xs text-muted-foreground">Task-aware routing: simple work goes to the Fast model, complex medical-billing reasoning to the Strong model. Plus the coded allowlist (read-only SQL + external APIs).</p>
+          </div>
+          <span id="routing-mode-pill" class="inline-flex items-center gap-1.5 rounded-full bg-muted px-3 py-1 text-[11px] font-semibold text-muted-foreground">…</span>
+        </div>
+        <div class="space-y-4 px-4 pb-4">
+          <div class="rounded-xl border border-border p-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  Task-aware routing
+                  <span id="route-auto-badge" class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground">loading…</span>
+                </p>
+                <p class="max-w-2xl text-xs text-muted-foreground">Simple CRUD / lookups / translations → Fast model; denial / coding / drafting / analysis → Strong model. Missing keys fall back to the Active provider automatically.</p>
+              </div>
+              <button type="button" id="route-auto-toggle" class="btn btn-outline btn-sm w-20">…</button>
+            </div>
+            <div class="mt-3 grid gap-3 sm:grid-cols-2">
+              <label class="block">
+                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Fast model · simple tasks</span>
+                <select id="route-fast" class="input h-9 w-full rounded-lg px-3 py-1 text-sm"></select>
+              </label>
+              <label class="block">
+                <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Strong model · complex reasoning</span>
+                <select id="route-strong" class="input h-9 w-full rounded-lg px-3 py-1 text-sm"></select>
+              </label>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <button type="button" class="btn btn-primary btn-sm" id="routing-save">Save routing</button>
+              <button type="button" class="btn btn-ghost btn-sm" id="routing-test-btn">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" class="mr-1.5"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+                Test routing
+              </button>
+              <input id="routing-test-input" type="text" placeholder="e.g. denial N197 ka analysis do" class="input h-9 min-w-[220px] flex-1 rounded-lg px-3 py-1 text-xs">
+              <span id="routing-test-status" class="text-xs text-muted-foreground"></span>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-border p-3">
+            <div class="flex flex-wrap items-center justify-between gap-3">
+              <div class="min-w-0">
+                <p class="flex flex-wrap items-center gap-2 text-sm font-semibold">
+                  Maker-Checker review
+                  <span id="review-badge" class="rounded-full bg-muted px-2 py-0.5 text-[10px] font-normal text-muted-foreground">loading…</span>
+                </p>
+                <p class="max-w-2xl text-xs text-muted-foreground">Worker agents (Adnan, Asmar, Actions Agent…) ka output pehle DRAFT hota hai — Review Agent (<span class="font-medium">Medical Billing / Administrator</span>) isay hamesha <span class="font-medium">Strong model</span> par check karta hai (CPT/ICD, denial codes, original request). Rejected draft worker ko wapas jaata hai fix karne ke liye; retry limit khatam = <span class="font-medium">manual review</span> flag.</p>
+              </div>
+              <button type="button" id="review-toggle" class="btn btn-outline btn-sm w-20">…</button>
+            </div>
+            <div class="mt-3 flex flex-wrap items-center gap-2">
+              <label class="flex items-center gap-2 text-xs">
+                Max correction loops
+                <select id="review-loops" class="input h-9 rounded-lg px-3 py-1 text-sm">
+                  <option value="0">0</option>
+                  <option value="1">1</option>
+                  <option value="2">2</option>
+                  <option value="3">3</option>
+                </select>
+              </label>
+              <button type="button" class="btn btn-primary btn-sm" id="review-save">Save review settings</button>
+            </div>
+          </div>
+
+          <div class="rounded-xl border border-border p-3">
+            <div class="flex flex-wrap items-center justify-between gap-2">
+              <div class="min-w-0">
+                <p class="text-sm font-semibold">External API allowlist</p>
+                <p class="text-xs text-muted-foreground">Sirf yahan registered <span class="font-medium">public HTTPS</span> endpoints ko call kar sakta hai (SSRF-guarded). Placeholders URL mein <code class="rounded bg-muted px-1 py-0.5">{name}</code> aur koi bhi params is convert ho jate hain.</p>
+              </div>
+              <span id="tools-count" class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">…</span>
+            </div>
+            <ul id="tools-list" class="mt-3 space-y-2"></ul>
+            <form id="tools-add-form" class="mt-3 grid gap-2 sm:grid-cols-12"></form>
+          </div>
+        </div>
+      </div>
+    </div>`;
+  box.querySelectorAll("[data-open]").forEach((b) =>
+    b.addEventListener("click", () => openChatSettingsProvider(b.dataset.open))
+  );
+  initAiLogs();
+  initToolsRouting();
+}
+
+let aiLogFilter = "INFO";
+let aiLogTimer = null;
+
+async function loadAiLogs() {
+  const list = $("#ai-log-list");
+  if (!list) return;
+  const search = ($("#ai-log-search")?.value || "").trim();
+  try {
+    const res = await api(
+      `/api/logs?level=${encodeURIComponent(aiLogFilter)}&limit=300&search=${encodeURIComponent(search)}`
+    );
+    const logs = res.logs || [];
+    const empty = $("#ai-log-empty");
+    if (empty) empty.classList.toggle("hidden", logs.length > 0);
+    list.innerHTML = logs.length
+      ? logs
+          .map((l) => {
+            const lv = l.level || "INFO";
+            const cls = lv === "ERROR" || lv === "CRITICAL" ? "log-error" : lv === "WARNING" ? "log-warning" : "log-info";
+            return `<li class="ai-log-item ${cls}"><span class="ai-log-time">${escapeHtml(l.ts)}</span><span class="ai-log-lvl">${escapeHtml(lv)}</span><span class="ai-log-msg">${escapeHtml(l.message)}</span></li>`;
+          })
+          .join("")
+      : "";
+  } catch {
+    // settings list may not be reachable — keep the previous content
+  }
+}
+
+function initAiLogs() {
+  if (aiLogTimer) {
+    clearInterval(aiLogTimer);
+    aiLogTimer = null;
+  }
+  loadAiLogs();
+  document.querySelectorAll("[data-log-level]").forEach((b) =>
+    b.addEventListener("click", () => {
+      aiLogFilter = b.dataset.logLevel;
+      document.querySelectorAll("[data-log-level]").forEach((x) => {
+        const active = x.dataset.logLevel === aiLogFilter;
+        x.classList.toggle("!bg-primary", active);
+        x.classList.toggle("!text-primary-foreground", active);
+      });
+      loadAiLogs();
+    })
+  );
+  const refresh = $("#ai-log-refresh");
+  if (refresh) refresh.addEventListener("click", loadAiLogs);
+  const s = $("#ai-log-search");
+  if (s) {
+    s._t = null;
+    s.addEventListener("input", () => {
+      clearTimeout(s._t);
+      s._t = setTimeout(loadAiLogs, 350);
+    });
+  }
+  aiLogTimer = setInterval(() => {
+    const view = $("#view-settings");
+    if (view && !view.classList.contains("hidden") && $("#ai-log-list")) loadAiLogs();
+  }, 4000);
+}
+
+let routingState = { auto: true, fast: "gemini", strong: "omni", tools: [], providers: [], review: { enabled: true, max_loops: 2 } };
+
+function toolProviderOptions(selected, placeholder) {
+  const opts = ['<option value="">' + escapeHtml(placeholder) + "</option>"];
+  for (const p of routingState.providers || []) {
+    const sel = p.provider === selected ? " selected" : "";
+    const noKey = p.has_key ? "" : " (no key)";
+    opts.push(`<option value="${escapeHtml(p.provider)}"${sel}${p.has_key ? "" : " disabled"}>${escapeHtml(p.label)}${noKey}</option>`);
+  }
+  return opts.join("");
+}
+
+function routeProviderLabel(provider) {
+  const p = (routingState.providers || []).find((x) => x.provider === provider);
+  return p ? p.label : provider;
+}
+
+function renderToolsRouting() {
+  const toggle = $("#route-auto-toggle");
+  if (!toggle) return;
+  const autoOn = routingState.auto;
+  toggle.textContent = autoOn ? "On" : "Off";
+  toggle.className = "btn btn-sm w-20 " + (autoOn ? "btn-primary" : "btn-outline");
+  const badge = $("#route-auto-badge");
+  if (badge) {
+    badge.className =
+      "rounded-full px-2 py-0.5 text-[10px] font-normal " +
+      (autoOn ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground");
+    badge.textContent = autoOn ? "ON — active" : "OFF — using Active provider";
+  }
+  const pill = $("#routing-mode-pill");
+  if (pill) pill.textContent = `Fast: ${routeProviderLabel(routingState.fast)} · Strong: ${routeProviderLabel(routingState.strong)}`;
+  const fast = $("#route-fast");
+  const strong = $("#route-strong");
+  if (fast) {
+    fast.innerHTML = toolProviderOptions(routingState.fast, "gemini");
+    fast.disabled = !autoOn;
+  }
+  if (strong) {
+    strong.innerHTML = toolProviderOptions(routingState.strong, "omni");
+    strong.disabled = !autoOn;
+  }
+  renderToolsList();
+  renderToolsAddForm();
+  const count = $("#tools-count");
+  if (count) count.textContent = `${routingState.tools.length} tool${routingState.tools.length === 1 ? "" : "s"}`;
+  renderReviewBlock();
+}
+
+function renderReviewBlock() {
+  const toggle = $("#review-toggle");
+  if (!toggle) return;
+  const on = !!routingState.review.enabled;
+  toggle.textContent = on ? "On" : "Off";
+  toggle.className = "btn btn-sm w-20 " + (on ? "btn-primary" : "btn-outline");
+  const badge = $("#review-badge");
+  if (badge) {
+    badge.className =
+      "rounded-full px-2 py-0.5 text-[10px] font-normal " +
+      (on ? "bg-emerald-500/10 text-emerald-600 dark:text-emerald-400" : "bg-muted text-muted-foreground");
+    badge.textContent = on ? `ON — ${routingState.review.max_loops} correction loop(s), Strong model` : "OFF — draft directly to user";
+  }
+  const loops = $("#review-loops");
+  if (loops) loops.value = String(routingState.review.max_loops || 0);
+}
+
+async function loadToolsRouting() {
+  try {
+    const [r, t, rv] = await Promise.all([api("/api/chat/routing"), api("/api/tools"), api("/api/chat/review")]);
+    routingState = {
+      auto: (r.auto || "").toString() === "1" || r.auto === true,
+      fast: r.fast || "gemini",
+      strong: r.strong || "omni",
+      providers: r.providers || [],
+      tools: t.tools || [],
+      review: { enabled: !!rv.enabled, max_loops: rv.max_loops ?? 2 },
+    };
+  } catch (e) {
+    toast(e.message, "error");
+  }
+  renderToolsRouting();
+}
+
+function initToolsRouting() {
+  const toggle = $("#route-auto-toggle");
+  if (toggle) toggle.addEventListener("click", () => { routingState.auto = !routingState.auto; renderToolsRouting(); });
+  const save = $("#routing-save");
+  if (save)
+    save.addEventListener("click", async () => {
+      const fast = $("#route-fast")?.value || routingState.fast;
+      const strong = $("#route-strong")?.value || routingState.strong;
+      try {
+        const r = await api("/api/chat/routing", { method: "PUT", body: JSON.stringify({ auto: routingState.auto, fast, strong }) });
+        routingState.auto = (r.auto || "").toString() === "1" || r.auto === true;
+        routingState.fast = r.fast || fast;
+        routingState.strong = r.strong || strong;
+        renderToolsRouting();
+        toast("Routing settings saved.");
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    });
+  const testBtn = $("#routing-test-btn");
+  if (testBtn)
+    testBtn.addEventListener("click", async () => {
+      const input = $("#routing-test-input");
+      const msg = (input?.value || "").trim();
+      const status = $("#routing-test-status");
+      if (!msg) { if (status) status.textContent = "Pehle koi message likhein."; return; }
+      if (status) status.textContent = "Checking…";
+      try {
+        const r = await api("/api/chat/routing/test", { method: "POST", body: JSON.stringify({ message: msg }) });
+        if (status)
+          status.innerHTML = `<span class="rounded-full bg-muted px-2 py-0.5 text-[11px] font-mono">${escapeHtml(r.kind)}</span> → <span class="font-semibold">${escapeHtml(r.label)}</span>${r.provider === r.fast ? " (fast tier)" : r.provider === r.strong ? " (strong tier)" : " (active fallback)"}`;
+      } catch (e) {
+        if (status) status.textContent = e.message;
+      }
+    });
+  const input = $("#routing-test-input");
+  if (input)
+    input.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") $("#routing-test-btn")?.click();
+    });
+  const rvToggle = $("#review-toggle");
+  if (rvToggle)
+    rvToggle.addEventListener("click", () => {
+      routingState.review.enabled = !routingState.review.enabled;
+      renderReviewBlock();
+    });
+  const rvLoops = $("#review-loops");
+  if (rvLoops)
+    rvLoops.addEventListener("change", () => {
+      routingState.review.max_loops = Number(rvLoops.value) || 0;
+      renderReviewBlock();
+    });
+  const rvSave = $("#review-save");
+  if (rvSave)
+    rvSave.addEventListener("click", async () => {
+      try {
+        const rv = await api("/api/chat/review", { method: "PUT", body: JSON.stringify({ enabled: routingState.review.enabled, max_loops: routingState.review.max_loops }) });
+        routingState.review = { enabled: !!rv.enabled, max_loops: rv.max_loops ?? 2 };
+        renderReviewBlock();
+        toast("Review settings saved.");
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    });
+  loadToolsRouting();
+}
+
+function renderToolsList() {
+  const list = $("#tools-list");
+  if (!list) return;
+  list.innerHTML = routingState.tools.length
+    ? routingState.tools
+        .map((t) => `
+        <li class="rounded-lg border ${t.enabled ? "border-border" : "border-dashed border-border opacity-70"}" data-tool-id="${t.id}">
+          <div class="flex flex-wrap items-center gap-2 px-3 py-2">
+            <div class="min-w-0 flex-1">
+              <div class="flex items-center gap-2">
+                <span class="truncate text-xs font-semibold">${escapeHtml(t.name)}</span>
+                ${t.enabled ? `<span class="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">Enabled</span>` : `<span class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">Disabled</span>`}
+              </div>
+              <p class="mt-0.5 truncate font-mono text-[10px] text-muted-foreground">${escapeHtml(t.url_template)}</p>
+              ${t.description ? `<p class="mt-0.5 text-[10px] text-muted-foreground">${escapeHtml(t.description)}</p>` : ""}
+            </div>
+            <button type="button" class="btn btn-ghost btn-icon" data-edit-tool="${t.id}" title="Edit">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+            </button>
+            <button type="button" class="btn btn-ghost btn-icon" data-del-tool="${t.id}" title="Delete">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+            </button>
+          </div>
+        </li>`)
+        .join("")
+    : '<li class="rounded-lg border border-dashed border-border px-3 py-4 text-center text-[11px] text-muted-foreground">No external APIs registered yet — add one below ("{placeholder}" params allowed).</li>';
+  list.querySelectorAll("[data-edit-tool]").forEach((b) =>
+    b.addEventListener("click", () => editToolRow(Number(b.dataset.editTool)))
+  );
+  list.querySelectorAll("[data-del-tool]").forEach((b) =>
+    b.addEventListener("click", async () => {
+      if (!confirm("Is API tool ko hata dein?")) return;
+      try {
+        await api(`/api/tools/${b.dataset.delTool}`, { method: "DELETE" });
+        routingState.tools = routingState.tools.filter((t) => t.id !== Number(b.dataset.delTool));
+        renderToolsList();
+        const count = $("#tools-count");
+        if (count) count.textContent = `${routingState.tools.length} tool${routingState.tools.length === 1 ? "" : "s"}`;
+        toast("Tool delete ho gaya.");
+      } catch (e) {
+        toast(e.message, "error");
+      }
+    })
+  );
+}
+
+function renderToolsAddForm() {
+  const form = $("#tools-add-form");
+  if (!form) return;
+  form.innerHTML = `
+    <input type="text" id="tool-name" placeholder="Tool name (e.g. NPI Registry)" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-3">
+    <input type="url" id="tool-url" placeholder="https://…/api/?key={param}" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-5">
+    <input type="text" id="tool-desc" placeholder="Description (optional)" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-2">
+    <button type="submit" class="btn btn-primary btn-sm h-9 sm:col-span-2">Add tool</button>
+  `;
+  form.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const name = $("#tool-name")?.value.trim();
+    const url = $("#tool-url")?.value.trim();
+    const desc = $("#tool-desc")?.value.trim();
+    if (!name || !url) { toast("Name aur URL dono required hain.", "error"); return; }
+    try {
+      const created = await api("/api/tools", { method: "POST", body: JSON.stringify({ name, url_template: url, description: desc, enabled: true }) });
+      routingState.tools.push(created);
+      renderToolsList();
+      const count = $("#tools-count");
+      if (count) count.textContent = `${routingState.tools.length} tool${routingState.tools.length === 1 ? "" : "s"}`;
+      if ($("#tool-name")) $("#tool-name").value = "";
+      if ($("#tool-url")) $("#tool-url").value = "";
+      if ($("#tool-desc")) $("#tool-desc").value = "";
+      toast("Tool added.");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+}
+
+function editToolRow(id) {
+  const list = $("#tools-list");
+  if (!list) return;
+  const li = list.querySelector(`[data-tool-id="${id}"]`);
+  if (!li) return;
+  const t = routingState.tools.find((x) => x.id === id);
+  if (!t) return;
+  li.innerHTML = `
+    <div class="grid gap-2 p-3 sm:grid-cols-12">
+      <input type="text" id="tool-name-${t.id}" value="${escapeHtml(t.name)}" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-3">
+      <input type="url" id="tool-url-${t.id}" value="${escapeHtml(t.url_template)}" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-5">
+      <input type="text" id="tool-desc-${t.id}" value="${escapeHtml(t.description || "")}" class="input h-9 rounded-lg px-3 py-1 text-xs sm:col-span-2">
+      <div class="flex items-center gap-2 sm:col-span-2">
+        <button type="button" class="btn btn-primary btn-sm" id="tool-save-${t.id}">Save</button>
+        <button type="button" class="btn btn-ghost btn-sm" data-cancel-edit="${t.id}">Cancel</button>
+      </div>
+      <label class="flex items-center gap-2 text-xs sm:col-span-12">
+        <input type="checkbox" id="tool-enabled-${t.id}" ${t.enabled ? "checked" : ""} class="accent-[hsl(var(--primary))]"> Enabled
+      </label>
+    </div>`;
+  li.querySelector(`#tool-save-${t.id}`).addEventListener("click", async () => {
+    const name = li.querySelector(`#tool-name-${t.id}`)?.value.trim();
+    const url = li.querySelector(`#tool-url-${t.id}`)?.value.trim();
+    const desc = li.querySelector(`#tool-desc-${t.id}`)?.value.trim();
+    const enabled = li.querySelector(`#tool-enabled-${t.id}`)?.checked;
+    if (!name || !url) { toast("Name aur URL dono required hain.", "error"); return; }
+    try {
+      const updated = await api(`/api/tools/${t.id}`, { method: "PUT", body: JSON.stringify({ name, url_template: url, description: desc, enabled }) });
+      routingState.tools = routingState.tools.map((x) => (x.id === updated.id ? updated : x));
+      renderToolsList();
+      toast("Tool updated.");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+  li.querySelector(`[data-cancel-edit="${t.id}"]`).addEventListener("click", () => renderToolsList());
+}
+
+function renderChatSettingsDetail(box, p) {
+  const meta = (chatSettings.meta || {})[p.provider] || {};
+  const isActive = chatSettings.active === p.provider;
+  const hasKey = !!p.api_key || ((p.keys || []).length > 0);
+  const modelName = p.model || meta.default_model || "";
+  const tuning = p.tuning || { temperature: 0.2, max_tokens: 1024 };
+  const t = tuning.temperature;
+  const mt = tuning.max_tokens;
+  box.innerHTML = `
+    <div class="mx-auto w-full max-w-5xl space-y-4">
+      <button type="button" class="btn btn-ghost -ml-2 inline-flex items-center gap-1.5" data-back="1">
+        <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+        All models
+      </button>
+
+      <div class="card overflow-visible">
+        <div class="flex flex-wrap items-center gap-4">
+          ${providerLogo(p.provider, "h-14 w-14 text-2xl")}
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <h3 class="card-title">${escapeHtml(meta.label || p.provider)}</h3>
+              ${chatProviderBadge(isActive, hasKey, true)}
+            </div>
+            <p class="mt-1.5 text-xs text-muted-foreground">${chatSettingHint(p.provider)}</p>
+          </div>
+          <div class="flex flex-wrap items-center gap-2">
+            <button type="button" class="btn btn-outline btn-sm" id="test-btn-${p.provider}" data-test="${p.provider}">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg>
+              Test connection
+            </button>
+            ${isActive ? "" : `<button type="button" class="btn btn-primary btn-sm" data-activate="${p.provider}">Use this model</button>`}
+          </div>
+        </div>
+        <p class="hidden mt-3 text-xs" id="test-result-${p.provider}"></p>
+      </div>
+
+      <div class="card overflow-visible">
+        <div class="card-header flex-wrap gap-2">
+          <div class="min-w-0">
+            <h4 class="text-sm font-semibold">Server / Base URL</h4>
+            <p class="text-xs text-muted-foreground">Where this provider's API lives. Local gateways like OmniRoute run on your machine — set your own address here.</p>
+          </div>
+          <button type="button" class="btn btn-ghost btn-sm" data-reset-base="${p.provider}" title="Restore the built-in default endpoint">
+            <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+            Reset to default
+          </button>
+        </div>
+        <div class="px-4 pb-4">
+          <input type="url" id="base-url-${p.provider}" value="${escapeHtml(p.base_url || meta.endpoint || "")}" placeholder="https://api.example.com/v1" class="input h-9 w-full rounded-lg px-3 py-1 text-sm">
+          <p class="mt-1 text-[10px] text-muted-foreground">Default endpoint for this provider: <code class="rounded bg-muted px-1 py-0.5">${escapeHtml(meta.endpoint || "—")}</code></p>
+        </div>
+      </div>
+
+      <div class="grid gap-4 lg:grid-cols-3">
+        <div class="space-y-4 lg:col-span-2">
+          <div class="card overflow-visible">
+            <div class="card-header flex-wrap gap-2">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold">Model</h4>
+                <p class="text-xs text-muted-foreground">The exact model Chat uses for this provider.</p>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" data-refresh="${p.provider}" title="Fetch available models">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 12a9 9 0 1 1-2.64-6.36"/><path d="M21 3v5h-5"/></svg>
+                Refresh
+              </button>
+            </div>
+            <div class="px-4 pb-4">
+              <span class="mb-1 block text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Model <span class="font-normal normal-case" id="model-count-${p.provider}"></span></span>
+              <select id="model-${p.provider}" class="input h-9 w-full rounded-lg px-3 py-1 text-sm">
+                <option value="${escapeHtml(modelName)}">${escapeHtml(modelName || "select a model…")}</option>
+              </select>
+              <p class="mt-1 text-[10px] text-muted-foreground" id="model-status-${p.provider}"></p>
+            </div>
+          </div>
+
+          <div class="card overflow-visible">
+            <div class="card-header flex-wrap gap-2">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold">Response tuning</h4>
+                <p class="text-xs text-muted-foreground">How creative and how long the answers are for this model.</p>
+              </div>
+              <button type="button" class="btn btn-ghost btn-sm" data-reset-tuning="${p.provider}" title="Reset to defaults (0.2 / 1024)">
+                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/></svg>
+                Reset defaults
+              </button>
+            </div>
+            <div class="space-y-5 px-4 pb-4">
+              <div>
+                <div class="flex items-center justify-between gap-2">
+                  <label for="temp-${p.provider}" class="text-xs font-medium">Temperature</label>
+                  <span id="temp-value-${p.provider}" class="rounded bg-muted px-1.5 py-0.5 font-mono text-[11px] text-foreground">${t.toFixed(1)}</span>
+                </div>
+                <input type="range" id="temp-${p.provider}" min="0" max="2" step="0.1" value="${t}" class="w-full cursor-pointer accent-[hsl(var(--primary))]">
+                <div class="mt-0.5 flex justify-between text-[10px] text-muted-foreground"><span>0 · factual &amp; focused</span><span>1</span><span>2 · creative &amp; varied</span></div>
+              </div>
+              <div>
+                <label for="maxtok-${p.provider}" class="mb-1 block text-xs font-medium">Max answer length <span class="font-normal text-muted-foreground">(tokens)</span></label>
+                <input type="number" id="maxtok-${p.provider}" min="128" max="8192" step="16" value="${mt}" class="input h-9 w-40 rounded-lg px-3 py-1 text-sm">
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="space-y-4">
+          <div class="card keys-manager overflow-visible">
+            <div class="card-header flex-wrap gap-2">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold">API keys <span class="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-semibold text-primary">${(p.keys || []).length} keys</span></h4>
+                <p class="text-xs text-muted-foreground">Add as many as you want \u2014 when one hits its limit, Chat auto-switches to the next.</p>
+              </div>
+            </div>
+            <div class="px-4 pb-4">
+              ${(p.keys || []).length ? `
+              <ul class="space-y-2">
+                ${(p.keys || [])
+                  .map((k) => `
+                <li class="flex flex-wrap items-center gap-2 rounded-lg border px-3 py-2 ${k.is_active ? "border-primary/50 bg-primary/5" : "border-border"}">
+                  <input type="radio" name="key-radio-${p.provider}" data-key-active="${k.id}" ${k.is_active ? "checked" : ""} title="Use this key now" class="accent-[hsl(var(--primary))]">
+                  <div class="min-w-0 flex-1">
+                    <div class="flex items-center gap-2">
+                      <span class="truncate text-xs font-semibold">${escapeHtml(k.label || "Key")}</span>
+                      ${k.is_active ? `<span class="rounded-full bg-emerald-500/10 px-1.5 py-0.5 text-[9px] font-semibold text-emerald-600 dark:text-emerald-400">In use</span>` : ""}
+                      ${k.enabled ? "" : `<span class="rounded-full bg-muted px-1.5 py-0.5 text-[9px] text-muted-foreground">Disabled</span>`}
+                    </div>
+                    <p class="font-mono text-[10px] text-muted-foreground">${escapeHtml(k.masked || "\u2026\u2026\u2026")}</p>
+                  </div>
+                  <label class="flex items-center gap-1 text-[10px] text-muted-foreground" title="Enabled keys participate in auto-failover">
+                    <input type="checkbox" data-key-toggle="${k.id}" ${k.enabled ? "checked" : ""} class="accent-[hsl(var(--primary))]"> On
+                  </label>
+                  <button type="button" class="btn btn-ghost btn-icon" data-key-delete="${k.id}" title="Delete key">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                  </button>
+                </li>`)
+                  .join("")}
+              </ul>` : `<p class="rounded-lg border border-dashed border-border px-3 py-3 text-center text-xs text-muted-foreground">No keys yet \u2014 add your first one below.</p>`}
+              <form data-key-add="${p.provider}" class="mt-3 space-y-2">
+                <div class="grid gap-2 sm:grid-cols-[8rem_1fr]">
+                  <input id="key-label-${p.provider}" placeholder="Label" class="input h-9 rounded-lg px-3 py-1 text-sm">
+                  <input id="key-new-${p.provider}" type="password" autocomplete="off" placeholder="Paste new API key\u2026" class="input h-9 rounded-lg px-3 py-1 text-sm">
+                </div>
+                <button type="submit" class="btn btn-outline btn-sm h-9">Add key</button>
+              </form>
+              <p class="mt-2 text-[10px] text-muted-foreground">Auto-failover: on a rate-limit / auth error (401, 403, 429) Chat moves to the next enabled key automatically. Pick the active one here anytime.</p>
+            </div>
+          </div>
+
+          <div class="card overflow-visible">
+            <div class="card-header">
+              <div class="min-w-0">
+                <h4 class="text-sm font-semibold">Connection</h4>
+                <p class="text-xs text-muted-foreground">Details and live checks for this provider.</p>
+              </div>
+            </div>
+            <div class="space-y-2.5 px-4 pb-4 text-xs">
+              <div class="flex items-center justify-between gap-2"><span class="text-muted-foreground">Online status</span><span id="conn-${p.provider}" class="font-medium text-muted-foreground">Not tested</span></div>
+              <div class="flex items-center justify-between gap-2"><span class="text-muted-foreground">Active in Chat</span>${isActive ? `<span class="rounded-full bg-emerald-500/10 px-2 py-0.5 text-[10px] font-semibold text-emerald-600 dark:text-emerald-400">Yes</span>` : `<span class="rounded-full bg-muted px-2 py-0.5 text-[10px] text-muted-foreground">No</span>`}</div>
+              <div class="flex items-center justify-between gap-2"><span class="text-muted-foreground">Kind</span><span class="font-medium">${meta.kind === "gemini" ? "Google AI" : "OpenAI-compatible"}</span></div>
+              <div class="flex items-center justify-between gap-2"><span class="shrink-0 text-muted-foreground">Endpoint</span><span class="truncate font-mono text-[10px]" title="${escapeHtml(meta.endpoint || "")}">${escapeHtml((meta.endpoint || "").replace(/^https?:\/\//, ""))}</span></div>
+              <button type="button" class="btn btn-outline btn-sm mt-1 w-full" data-test="${p.provider}">Run connection test</button>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="flex flex-wrap items-center gap-2">
+        <button type="button" class="btn btn-primary btn-sm" data-save="${p.provider}">
+          <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/><path d="M17 21v-8H7v8"/><path d="M7 3v5h8"/></svg>
+          Save changes
+        </button>
+        ${!!p.api_key ? `<button type="button" class="btn btn-ghost btn-icon" data-remove="${p.provider}" title="Remove legacy key">
+          <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+        </button>` : ""}
+        <span class="ml-auto text-[10px] text-muted-foreground">Keys are stored server-side (.env)</span>
+      </div>
+    </div>`;
+  box.querySelectorAll("[data-back]").forEach((b) =>
+    b.addEventListener("click", chatSettingsBack)
+  );
+  box.querySelectorAll("[data-save]").forEach((b) =>
+    b.addEventListener("click", () => saveChatSetting(b.dataset.save))
+  );
+  box.querySelectorAll("[data-activate]").forEach((b) =>
+    b.addEventListener("click", () => activateChatProvider(b.dataset.activate))
+  );
+  box.querySelectorAll("[data-remove]").forEach((b) =>
+    b.addEventListener("click", () => removeChatKey(b.dataset.remove))
+  );
+  box.querySelectorAll("[data-refresh]").forEach((b) =>
+    b.addEventListener("click", () => loadProviderModels(b.dataset.refresh))
+  );
+  box.querySelectorAll("[data-test]").forEach((b) =>
+    b.addEventListener("click", () => testChatProvider(b.dataset.test))
+  );
+  box.querySelectorAll("[data-reset-tuning]").forEach((b) =>
+    b.addEventListener("click", () => resetChatTuning(b.dataset.resetTuning))
+  );
+  box.querySelectorAll("[data-reset-base]").forEach((b) => {
+    const bu = $(`#base-url-${b.dataset.resetBase}`);
+    if (bu && b.dataset.resetBase) {
+      b.addEventListener("click", () => {
+        bu.value = (p.default_base_url || meta.endpoint || "").replace(/\/+$/, "");
+        saveChatSetting(p.provider);
+      });
+    }
+  });
+  box.querySelectorAll("[data-key-active]").forEach((r) =>
+    r.addEventListener("change", () => activateChatKey(p.provider, parseInt(r.dataset.keyActive, 10)))
+  );
+  box.querySelectorAll("[data-key-toggle]").forEach((c) =>
+    c.addEventListener("change", () => toggleChatKey(p.provider, parseInt(c.dataset.keyToggle, 10), c.checked))
+  );
+  box.querySelectorAll("[data-key-delete]").forEach((b) =>
+    b.addEventListener("click", () => deleteChatKey(p.provider, parseInt(b.dataset.keyDelete, 10)))
+  );
+  box.querySelectorAll("[data-key-add]").forEach((f) =>
+    f.addEventListener("submit", (e) => {
+      e.preventDefault();
+      addChatKey(p.provider);
+    })
+  );
+  const tempEl = $(`#temp-${p.provider}`);
+  if (tempEl) {
+    tempEl.addEventListener("input", () => {
+      const v = $(`#temp-value-${p.provider}`);
+      if (v) v.textContent = parseFloat(tempEl.value).toFixed(1);
+    });
+  }
+  box.querySelectorAll(".card input").forEach((inp) => {
+    if (inp.closest && inp.closest(".keys-manager")) return;
+    inp.addEventListener("keydown", (e) => {
+      if (e.key === "Enter") {
+        e.preventDefault();
+        saveChatSetting(p.provider);
+      }
+    });
+  });
+  loadProviderModels(p.provider);
+}
+
+async function loadProviderModels(provider) {
+  const sel = $(`#model-${provider}`);
+  const statusEl = $(`#model-status-${provider}`);
+  const countEl = $(`#model-count-${provider}`);
+  if (!sel) return;
+  sel.disabled = true;
+  if (statusEl) {
+    statusEl.classList.remove("text-destructive");
+    statusEl.textContent = "Loading models…";
+  }
+  let res;
+  try {
+    res = await api(`/api/chat/models/detail?provider=${encodeURIComponent(provider)}`);
+  } catch (err) {
+    if (statusEl) {
+      statusEl.textContent = "Could not reach the provider.";
+      statusEl.classList.add("text-destructive");
+    }
+    sel.disabled = false;
+    return;
+  }
+  const current = (chatSettings.providers.find((p) => p.provider === provider) || {}).model || "";
+  const available = (res.models || []).map((m) => m.id);
+  if (res.error) {
+    const msg =
+      res.error === "no_key"
+        ? "No API key set — models cannot be fetched."
+        : `Could not fetch models (${res.error}).`;
+    if (statusEl) {
+      statusEl.textContent = msg;
+      statusEl.classList.add("text-destructive");
+    }
+    if (countEl) countEl.textContent = "";
+    sel.innerHTML = `<option value="${escapeHtml(current)}">${escapeHtml(current || "select a model…")}</option>`;
+    if (!current) sel.classList.add("text-muted-foreground");
+    sel.disabled = false;
+    return;
+  }
+  const opts = [];
+  const currentInList = current && available.includes(current);
+  if (current && !currentInList) {
+    opts.push(`<option value="${escapeHtml(current)}" selected>${escapeHtml(current)} — not available</option>`);
+  }
+  available.forEach((id) => {
+    const isActive = id === current;
+    opts.push(
+      `<option value="${escapeHtml(id)}" ${isActive ? "selected" : ""}${isActive ? ' data-active="1"' : ""}>${escapeHtml(id)}${isActive ? " ★ Active" : ""}</option>`
+    );
+  });
+  sel.innerHTML = opts.length ? opts.join("") : `<option value="${escapeHtml(current)}">${escapeHtml(current || "—")}</option>`;
+  sel.classList.remove("text-muted-foreground");
+  if (countEl) countEl.textContent = `(${available.length} available)`;
+  if (statusEl) {
+    statusEl.textContent = currentInList
+      ? "The currently active model is below."
+      : current
+      ? "Your saved model is no longer available — pick one below."
+      : "";
+    if (!currentInList && current) statusEl.classList.add("text-destructive");
+  }
+  sel.disabled = false;
+}
+
+function chatSettingHint(provider) {
+  if (provider === "gemini") return "Key from Google AI Studio. Popular models: gemini-3.6-flash, gemini-2.5-pro, gemini-2.5-flash.";
+  if (provider === "openai") return "Key from OpenAI platform. Popular models: gpt-4o, gpt-4o-mini, gpt-4.1.";
+  if (provider === "groq") return "Key from console.groq.com. Popular models: openai/gpt-oss-120b, openai/gpt-oss-20b, qwen/qwen3.8-27b.";
+  if (provider === "xai") return "Key from console.x.ai. Popular models: grok-2-latest, grok-2, grok-3.";
+  if (provider === "omni") return "OmniRoute is a local OpenAI-compatible AI gateway. Set your gateway URL (default http://localhost:20128/v1), its API key, and use model 'auto' for smart routing.";
+  return "Enter the API key and model name from your provider.";
+}
+
+async function saveChatSetting(provider) {
+  const modelEl = $(`#model-${provider}`);
+  const tempEl = $(`#temp-${provider}`);
+  const mtokEl = $(`#maxtok-${provider}`);
+  const body = { provider, model: modelEl ? modelEl.value.trim() : "" };
+  const baseEl = $(`#base-url-${provider}`);
+  if (baseEl) body.base_url = baseEl.value.trim();
+  if (tempEl && tempEl.value) body.temperature = parseFloat(tempEl.value);
+  if (mtokEl && mtokEl.value) body.max_tokens = parseInt(mtokEl.value, 10);
+  try {
+    chatSettings = await api("/api/chat/settings", { method: "PUT", body: JSON.stringify(body) });
+    renderChatSettings();
+    loadChatModels();
+    toast("Saved to .env + database", "success");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function addChatKey(provider) {
+  const labelEl = $(`#key-label-${provider}`);
+  const keyEl = $(`#key-new-${provider}`);
+  const api_key = keyEl ? keyEl.value.trim() : "";
+  const label = (labelEl ? labelEl.value.trim() : "") || "Key";
+  if (!api_key) {
+    toast("Paste the API key first", "error");
+    return;
+  }
+  try {
+    chatSettings = await api("/api/chat/keys", { method: "POST", body: JSON.stringify({ provider, label, api_key }) });
+    renderChatSettings();
+    loadChatModels();
+    toast("API key added \u2014 it's ready to use", "success");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function activateChatKey(provider, keyId) {
+  try {
+    chatSettings = await api("/api/chat/keys/active", { method: "POST", body: JSON.stringify({ provider, key_id: keyId }) });
+    renderChatSettings();
+    toast("Active key changed", "success");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+async function toggleChatKey(provider, keyId, enabled) {
+  try {
+    chatSettings = await api(`/api/chat/keys/${keyId}`, { method: "PUT", body: JSON.stringify({ provider, enabled }) });
+    renderChatSettings();
+    toast(enabled ? "Key enabled" : "Key disabled", "success");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+function deleteChatKey(provider, keyId) {
+  const masked = ((chatSettings.providers.find((p) => p.provider === provider) || {}).keys || []).find(
+    (k) => k.id === keyId
+  );
+  const label = (masked && masked.label) || "key";
+  confirmDialog(`Remove the ${label} key from ${((chatSettings.meta || {})[provider] || {}).label || provider}?`, async () => {
+    try {
+      chatSettings = await api(`/api/chat/keys/${keyId}`, { method: "DELETE" });
+      renderChatSettings();
+      toast("Key removed", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  });
+}
+
+async function testChatProvider(provider) {
+  const btnEls = document.querySelectorAll(`[data-test="${provider}"]`);
+  const resultEl = $(`#test-result-${provider}`);
+  const connEl = $(`#conn-${provider}`);
+  const setConn = (html, cls) => {
+    if (connEl) {
+      connEl.textContent = html;
+      connEl.className = "font-medium " + cls;
+    }
+  };
+  btnEls.forEach((b) => {
+    b.disabled = true;
+    b.textContent = "Testing\u2026";
+  });
+  if (resultEl) {
+    resultEl.classList.remove("hidden", "text-emerald-600", "dark:text-emerald-400", "text-destructive");
+    resultEl.textContent = "Contacting the provider\u2026";
+  }
+  setConn("Testing\u2026", "text-muted-foreground");
+  try {
+    const res = await api("/api/chat/settings/test", { method: "POST", body: JSON.stringify({ provider }) });
+    if (res && res.ok) {
+      setConn(`Online \u00b7 ${res.latency_ms} ms`, "text-emerald-600 dark:text-emerald-400");
+      if (resultEl) {
+        resultEl.classList.add("text-emerald-600", "dark:text-emerald-400");
+        resultEl.textContent = `Connected \u2014 ${res.model} replied in ${res.latency_ms} ms: \u201c${res.reply}\u201d`;
+      }
+    } else {
+      const msg = (res && res.error) || "Failed";
+      setConn("Offline", "text-destructive");
+      if (resultEl) {
+        resultEl.classList.add("text-destructive");
+        resultEl.textContent = msg;
+      }
+    }
+  } catch (e) {
+    setConn("Offline", "text-destructive");
+    if (resultEl) {
+      resultEl.classList.add("text-destructive");
+      resultEl.textContent = e.message;
+    }
+  } finally {
+    btnEls.forEach((b) => {
+      b.disabled = false;
+      b.textContent = "Test connection";
+    });
+  }
+}
+
+function resetChatTuning(provider) {
+  const tempEl = $(`#temp-${provider}`);
+  const valEl = $(`#temp-value-${provider}`);
+  const mtokEl = $(`#maxtok-${provider}`);
+  if (tempEl) tempEl.value = "0.2";
+  if (valEl) valEl.textContent = "0.2";
+  if (mtokEl) mtokEl.value = "1024";
+  saveChatSetting(provider);
+}
+
+async function activateChatProvider(provider) {
+  try {
+    chatSettings = await api("/api/chat/settings/active", {
+      method: "POST",
+      body: JSON.stringify({ provider }),
+    });
+    renderChatSettings();
+    loadChatModels();
+    toast(`Active model: ${chatSettings.active_label}`, "success");
+  } catch (e) {
+    toast(e.message, "error");
+  }
+}
+
+function removeChatKey(provider) {
+  const label = ((chatSettings.meta || {})[provider] || {}).label || provider;
+  confirmDialog(`Remove the saved API key for ${label}?`, async () => {
+    try {
+      chatSettings = await api(`/api/chat/settings/${encodeURIComponent(provider)}`, { method: "DELETE" });
+      renderChatSettings();
+      loadChatModels();
+      toast("API key removed", "success");
+    } catch (e) {
+      toast(e.message, "error");
+    }
+  });
+}
+
+// ---------- Knowledge base (admin/manager CRUD) ----------
+
+async function loadKnowledge() {
+  try {
+    knowledge = await api("/api/knowledge");
+  } catch (e) {
+    toast(e.message, "error");
+    return;
+  }
+  renderKnowledge();
+}
+
+function renderKnowledge() {
+  const box = $("#knowledge-list");
+  if (!box) return;
+  box.innerHTML = knowledge.length
+    ? knowledge
+        .map(
+          (k) => `
+      <div class="group px-4 py-3">
+        <div class="flex items-start justify-between gap-3">
+          <div class="min-w-0 flex-1">
+            <div class="flex flex-wrap items-center gap-2">
+              <p class="truncate text-sm font-semibold">${escapeHtml(k.title)}</p>
+              <span class="rounded-full bg-accent px-2 py-0.5 text-[10px] font-medium text-accent-foreground">${escapeHtml(k.category || "General")}</span>
+              ${creatorChip(k)}
+            </div>
+            <p class="mt-1 line-clamp-3 whitespace-pre-wrap text-xs leading-relaxed text-muted-foreground">${escapeHtml(k.content || "")}</p>
+            <p class="mt-1 text-[10px] text-muted-foreground">Updated ${relTime(k.updated_at)}</p>
+          </div>
+          ${canWrite() ? `
+          <div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <button type="button" class="tool-btn h-7 min-w-7" data-kedit="${k.id}" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg></button>
+            <button type="button" class="tool-btn h-7 min-w-7 hover:text-destructive" data-kdel="${k.id}" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
+          </div>` : ""}
+        </div>
+      </div>`
+        )
+        .join("")
+    : `<div class="flex flex-col items-center justify-center gap-2 px-4 py-16 text-center">
+         <p class="text-sm font-medium">No knowledge rules yet</p>
+         <p class="max-w-sm text-xs text-muted-foreground">Add billing rules, CPT/ICD code notes and payer guidelines — the chatbot will answer from them first.</p>
+       </div>`;
+  box.querySelectorAll("[data-kedit]").forEach((b) =>
+    b.addEventListener("click", () => knowledgeDialog(knowledge.find((x) => x.id === Number(b.dataset.kedit))))
+  );
+  box.querySelectorAll("[data-kdel]").forEach((b) =>
+    b.addEventListener("click", () => {
+      const k = knowledge.find((x) => x.id === Number(b.dataset.kdel));
+      if (!k) return;
+      confirmDialog(`Delete "${k.title}"?`, async () => {
+        try {
+          await api(`/api/knowledge/${k.id}`, { method: "DELETE" });
+          knowledge = knowledge.filter((x) => x.id !== k.id);
+          renderKnowledge();
+          toast("Rule deleted");
+        } catch (err) {
+          toast(err.message, "error");
+        }
+      });
+    })
+  );
+}
+
+function knowledgeDialog(item) {
+  const editing = !!item;
+  const src = item || { title: "", category: "", content: "" };
+  openDialog(`
+    <div class="flex items-start gap-3">
+      <div class="mt-0.5 rounded-full bg-primary/10 p-2 text-primary">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-semibold">${editing ? "Edit rule" : "New knowledge rule"}</h3>
+        <p class="mt-0.5 text-sm text-muted-foreground">The chatbot searches these rules first and labels such answers "Office rules".</p>
+      </div>
+    </div>
+    <form id="knowledge-form" class="mt-4 space-y-3">
+      <input id="k-title" required type="text" maxlength="120" placeholder="Title (e.g. CalViva claim window)" class="input w-full" value="${escapeHtml(src.title)}">
+      <input id="k-category" type="text" maxlength="80" placeholder="Category (e.g. CalViva · Sante IPA · CPT Rules)" class="input w-full" value="${escapeHtml(src.category || "")}">
+      <textarea id="k-content" rows="8" placeholder="The rule / guideline text the assistant must follow..." class="input w-full resize-y">${escapeHtml(src.content || "")}</textarea>
+      <div class="flex justify-end gap-2">
+        <button type="button" class="btn btn-outline" data-cancel-dialog>Cancel</button>
+        <button type="submit" class="btn btn-primary">Save</button>
+      </div>
+    </form>
+  `);
+  $("#knowledge-form [data-cancel-dialog]").addEventListener("click", closeDialog);
+  $("#knowledge-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const title = $("#k-title").value.trim();
+    if (!title) return;
+    const body = { title, category: $("#k-category").value.trim(), content: $("#k-content").value };
+    try {
+      if (editing) {
+        const updated = await api(`/api/knowledge/${item.id}`, { method: "PUT", body: JSON.stringify(body) });
+        const idx = knowledge.findIndex((x) => x.id === item.id);
+        if (idx >= 0) knowledge[idx] = updated;
+      } else {
+        const created = await api("/api/knowledge", { method: "POST", body: JSON.stringify(body) });
+        knowledge.unshift(created);
+      }
+      closeDialog();
+      renderKnowledge();
+      toast(editing ? "Rule updated" : "Rule added");
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
+  setTimeout(() => $("#k-title").focus(), 0);
+}
+
+function initKnowledge() {
+  $("#knowledge-add-btn")?.addEventListener("click", () => knowledgeDialog(null));
+}
+
 function initApp() {
   appStarted = true;
   const now = new Date();
@@ -3814,6 +6004,9 @@ function initApp() {
   $("#tasks-add-btn").addEventListener("click", () => taskDialog());
   $("#sched-add-btn").addEventListener("click", () => routineDialog());
   initPortals();
+  initChat();
+  initKnowledge();
+  initAgents();
   $("#notes-add-btn").addEventListener("click", () => openEditor(null));
   $("#pages-add-btn").addEventListener("click", () => pageCreateDialog());
 
@@ -4530,8 +6723,8 @@ function initApp() {
 
   const initialHash = location.hash;
   const bootSegs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  const BOOT_VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
-  const viewerLocked = state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings"].includes(bootSegs[0]);
+  const BOOT_VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"];
+  const viewerLocked = state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"].includes(bootSegs[0]);
   if (bootSegs.length && BOOT_VIEWS.includes(bootSegs[0]) && !viewerLocked) {
     // Deep-link boot: show the target shell instantly so dashboard never flashes
     switchViewShell(bootSegs[0]);
@@ -4543,7 +6736,7 @@ function initApp() {
     .then(() => {
       const segs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
       const v = segs[0];
-      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
+      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"];
       if (v === "pages") {
         const pid = Number(segs[1]);
         if (segs[1] && state.pages.some((p) => p.id === pid)) showPageDetail(pid);

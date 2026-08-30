@@ -97,6 +97,22 @@
         <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg>
         <span>Settings</span>
       </a>
+      <a href="#" class="nav-link" data-view="chat">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>
+        <span>Chat</span>
+      </a>
+      <a href="#" class="nav-link" data-view="knowledge">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 7v14"/><path d="M3 18a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h5a4 4 0 0 1 4 4 4 4 0 0 1 4-4h5a1 1 0 0 1 1 1v13a1 1 0 0 1-1 1h-6a3 3 0 0 0-3 3 3 3 0 0 0-3-3z"/></svg>
+        <span>Knowledge</span>
+      </a>
+      <a href="#" class="nav-link" data-view="chat-settings">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 8V4H8"/><rect width="16" height="12" x="4" y="8" rx="2"/><path d="M2 14h2"/><path d="M20 14h2"/><path d="M15 13v2"/><path d="M9 13v2"/><circle cx="12" cy="11" r="1"/><circle cx="9" cy="11" r="1"/><circle cx="15" cy="11" r="1"/></svg>
+        <span>AI Models</span>
+      </a>
+      <a href="#" class="nav-link" data-view="agents">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        <span>Agents</span>
+      </a>
     </nav>
 
     <div class="border-t border-border p-3">
@@ -603,6 +619,156 @@
         </div>
       </section>
 
+      <section id="view-chat" class="view hidden space-y-4">
+        <div class="card flex h-[calc(100vh-9rem)] min-h-[480px] flex-col overflow-hidden">
+          <div class="card-header flex-col items-stretch gap-2.5 border-b border-border">
+            <div class="flex items-center justify-between gap-3">
+              <div>
+                <h3 class="card-title">Chat</h3>
+                <p id="chat-subtitle" class="text-xs text-muted-foreground">Answers from your notes, pages &amp; guidelines</p>
+              </div>
+              <div class="flex items-center gap-2">
+                <button id="chat-agent-toggle" class="agent-toggle" type="button" aria-pressed="false" title="Actions Agent — lets me add/edit/delete your tasks, notes, pages &amp; schedule on your word">
+                  <span class="agent-toggle-switch"><span></span></span>
+                  <span class="agent-toggle-label">Agent</span>
+                </button>
+                <button id="chat-live-toggle" class="agent-toggle" type="button" aria-pressed="false" title="Live Chat with AI — answer like ChatGPT/Gemini in a browser, no medical-billing restriction">
+                  <span class="agent-toggle-switch"><span></span></span>
+                  <span class="agent-toggle-label">Live Chat with AI</span>
+                </button>
+                <button id="chat-delete-btn" class="btn btn-ghost btn-icon" title="Delete conversation">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg>
+                </button>
+                <button id="chat-new-btn" class="btn btn-outline btn-sm">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+                  New chat
+                </button>
+              </div>
+            </div>
+            <div id="chat-flow" class="chat-flow-wrap">
+              <span class="chat-flow-brand"><span class="cf-dot"></span>Agent workflow</span>
+              <div class="chat-flow-track flex min-w-0 flex-1 items-center gap-1 overflow-x-auto sm:gap-2"></div>
+              <span id="chat-flow-live" class="chat-flow-live">idle</span>
+            </div>
+          </div>
+          <div class="flex min-h-0 flex-1 flex-col md:flex-row">
+            <div id="chat-sessions-col" class="flex w-full shrink-0 flex-col border-b border-border md:w-60 md:border-b-0 md:border-r">
+              <div class="flex items-center justify-between gap-2 px-3 pb-1 pt-3">
+                <p class="conversations-label text-[10px] font-semibold uppercase tracking-wider text-muted-foreground">Conversations</p>
+                <div class="flex items-center gap-0.5">
+                  <button id="chat-clear-all-btn" class="btn btn-ghost btn-icon" title="Delete all conversations" aria-pressed="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/><line x1="10" x2="10" y1="11" y2="17"/><line x1="14" x2="14" y1="11" y2="17"/></svg>
+                  </button>
+                  <button id="chat-toggle-sessions" class="btn btn-ghost btn-icon" title="Show / hide conversations" aria-pressed="true">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="4" x2="20" y1="6" y2="6"/><line x1="4" x2="20" y1="12" y2="12"/><line x1="4" x2="20" y1="18" y2="18"/></svg>
+                  </button>
+                </div>
+              </div>
+              <div id="chat-sessions" class="min-h-0 flex-1 space-y-1 overflow-y-auto p-2 pt-1"></div>
+            </div>
+            <div id="chat-main" class="flex min-h-0 flex-1 flex-col">
+              <div id="chat-titlebar" class="flex shrink-0 items-center gap-2 border-b border-border px-4 py-2">
+                <button id="chat-back-btn" class="btn btn-ghost btn-icon md:hidden" title="Show conversations">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m12 19-7-7 7-7"/><path d="M19 12H5"/></svg>
+                </button>
+                <span id="chat-title" class="truncate text-sm font-semibold">New chat</span>
+                <span id="chat-status" class="ml-auto text-[10px] text-muted-foreground"></span>
+              </div>
+              <div id="chat-messages" class="chat-scroll min-h-0 flex-1 space-y-3 overflow-y-auto p-4"></div>
+              <form id="chat-form" class="shrink-0 border-t border-border p-3">
+                <div id="chat-attach-strip" class="mb-2 hidden flex-wrap items-center gap-2"></div>
+                <div class="flex items-end gap-2">
+                  <button type="button" id="chat-attach-btn" class="btn btn-ghost btn-icon h-11 w-11 shrink-0 rounded-xl" title="Attach a document (PNG / JPG / WebP / PDF)">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.44 11.05-9.19 9.19a6 6 0 0 1-8.49-8.49l8.57-8.57A4 4 0 1 1 18 8.84l-8.59 8.57a2 2 0 0 1-2.83-2.83l8.49-8.48"/></svg>
+                  </button>
+                  <input type="file" id="chat-attach-input" class="hidden" accept=".png,.jpg,.jpeg,.webp,.gif,.pdf" multiple>
+                  <textarea id="chat-input" rows="1" placeholder="Paste / attach a document, then ask about billing rules, CPT/ICD codes, appeals..." class="input min-h-[44px] max-h-40 flex-1 resize-y py-2.5"></textarea>
+                  <button id="chat-send-btn" type="submit" class="btn btn-primary h-11 w-11 shrink-0 rounded-xl p-0" title="Send">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m22 2-7 20-4-9-9-4Z"/><path d="M22 2 11 13"/></svg>
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section id="view-knowledge" class="view hidden space-y-4">
+        <div class="card max-w-3xl">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Knowledge Base</h3>
+              <p class="text-xs text-muted-foreground">Office billing rules, CPT/ICD codes &amp; payer guidelines the assistant searches first</p>
+            </div>
+            <button id="knowledge-add-btn" class="btn btn-outline btn-sm hidden">
+              <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5v14"/><path d="M5 12h14"/></svg>
+              New rule
+            </button>
+          </div>
+          <div id="knowledge-list" class="max-h-[70vh] divide-y divide-border overflow-y-auto"></div>
+        </div>
+      </section>
+
+      <section id="view-chat-settings" class="view hidden">
+        <div id="chat-settings-container"></div>
+      </section>
+
+      <section id="view-agents" class="view hidden space-y-4">
+        <div class="card max-w-2xl">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Assistant Agent</h3>
+              <p class="text-xs text-muted-foreground">When ON, Chat can create / edit / delete your data (tasks, notes, pages, schedule, guidelines and conversations) on your word</p>
+            </div>
+          </div>
+          <div class="flex items-center gap-3 p-4 pt-0">
+            <button id="agents-master-toggle" class="agent-toggle" type="button" aria-pressed="false" title="Turn the actions agent on or off">
+              <span class="agent-toggle-switch"><span></span></span>
+              <span class="agent-toggle-label">Agent</span>
+            </button>
+            <span id="agents-master-status" class="text-xs text-muted-foreground">Agent is OFF</span>
+          </div>
+        </div>
+
+        <div class="card max-w-4xl">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Custom agents</h3>
+              <p class="text-xs text-muted-foreground">Har tile ek agent hai — uske naam, kaam aur qabliyat ke saath. Jis ka switch <span class="font-medium text-emerald-600 dark:text-emerald-400">ON</span> ho, wahi Chat use karta hai.</p>
+            </div>
+          </div>
+          <div id="agents-grid" class="grid gap-3 p-4 pt-0 sm:grid-cols-2"></div>
+          <div id="agents-empty" class="hidden p-4 pt-0 text-sm text-muted-foreground">No agents yet &mdash; create your first one below.</div>
+          <div class="border-t border-border p-4">
+            <h4 class="mb-3 text-sm font-medium">New agent</h4>
+            <div class="space-y-3">
+              <div class="flex items-center gap-3">
+                <button type="button" id="agent-new-icon-btn" class="flex h-12 w-12 shrink-0 items-center justify-center rounded-lg border border-border bg-card/60 text-2xl transition-colors hover:border-primary/50" title="Icon choose karein (optional)">📦</button>
+                <div class="min-w-0 flex-1">
+                  <label class="mb-1 block text-xs font-medium text-muted-foreground">Agent name</label>
+                  <input id="agent-name-input" type="text" class="input w-full" placeholder="e.g. Billing Buddy" maxlength="120" autocomplete="off" />
+                </div>
+              </div>
+              <textarea id="agent-desc-input" rows="2" class="input w-full resize-none" placeholder="Ye agent kya karta hai? (work / capacity)" maxlength="500"></textarea>
+              <textarea id="agent-prompt-input" rows="4" class="input w-full resize-y" placeholder="Qabliyat / Instructions &mdash; kaise behave aur answer kare? e.g. Reply in Hinglish tone and always list CPT codes first." maxlength="4000"></textarea>
+              <div class="flex items-center gap-3">
+                <button id="agents-add-btn" class="btn btn-primary btn-sm">Create agent</button>
+                <span id="agents-add-status" class="text-xs text-muted-foreground"></span>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div class="card max-w-2xl">
+          <div class="card-header">
+            <div>
+              <h3 class="card-title">Delete a conversation</h3>
+              <p class="text-xs text-muted-foreground">With the Agent ON, just tell Chat the conversation title, e.g. &ldquo;delete the conversation about Reimbursement policy&rdquo;.</p>
+            </div>
+          </div>
+        </div>
+      </section>
+
     </main>
   </div>
 
@@ -929,9 +1095,9 @@
   <script>
     (function () {
       var v = (location.hash || "").replace(/^#\/?/, "").split("/")[0];
-      var ok = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"];
+      var ok = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "agents"];
       var target = ok.indexOf(v) >= 0 ? v : "dashboard";
-      ["dashboard", "tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings"].forEach(function (x) {
+      ["dashboard", "tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "agents"].forEach(function (x) {
         var el = document.getElementById("view-" + x);
         if (el) el.classList.toggle("hidden", x !== target);
       });
