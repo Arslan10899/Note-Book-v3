@@ -3130,6 +3130,30 @@ def _agent_prompt_with_memory(agent):
     return (prompt + mem).strip()
 
 
+def _agent_icon(a):
+    """Stored icon, or a role-based default so agents without one still get a
+    meaningful icon in chips/attribution (Medical Billing -> stethoscope, ...)."""
+    if not isinstance(a, dict):
+        return ""
+    icon = (a.get("icon") or "").strip()
+    if icon:
+        return icon
+    blob = (" " + str(a.get("name") or "") + " " + str(a.get("description") or "") + " ").lower()
+    if re.search(r"(medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b)", blob):
+        return "🩺"
+    if re.search(r"\bdata[ -]?entry\b|\bvdl\b", blob):
+        return "⌨️"
+    if re.search(r"\bcalling\b|\bcalls\b|\bphone\b", blob):
+        return "📞"
+    if re.search(r"\bern\b|\bremittance\b", blob):
+        return "🧾"
+    if re.search(r"\bprocessing\b|\bprocessor\b", blob):
+        return "⚙️"
+    if re.search(r"\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b", blob):
+        return "🛡️"
+    return ""
+
+
 def _active_agent():
     """Return the currently active custom agent row, or None (cached per request)."""
     cached = _cache_get("_active_agent_cache")
@@ -3838,7 +3862,7 @@ def _append_answer_footer(text, agent=None, source=None):
         return text
     if agent and (agent.get("name") or ""):
         role = (agent.get("description") or "").strip().split("\u2014")[0].split("-")[0].strip()[:60]
-        text += "\n\n__agentby__{}__{}__{}".format(agent["name"], agent.get("icon") or "", role)
+        text += "\n\n__agentby__{}__{}__{}".format(agent["name"], _agent_icon(agent), role)
     return text
 
 
@@ -3964,7 +3988,7 @@ def _chat_flow_events(sid, question, user_msg, user_name=None, first_message=Fal
             # single responder, e.g. "Rumman") rather than every selected one —
             # so the workflow reflects who really answered.
             if replying:
-                agents_payload = [{"name": replying["name"], "icon": replying.get("icon") or ""}]
+                agents_payload = [{"name": replying["name"], "icon": _agent_icon(replying)}]
                 routed = replying["name"]
             else:
                 agents_payload = []
@@ -5168,7 +5192,7 @@ def chat_agent_get():
         "enabled": _agent_enabled(),
         "live": _live_chat_enabled(),
         "active_id": active["id"] if active else None,
-        "active": [{"name": a["name"], "icon": a.get("icon") or ""} for a in actives],
+        "active": [{"name": a["name"], "icon": _agent_icon(a)} for a in actives],
     })
 
 
