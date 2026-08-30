@@ -62,6 +62,11 @@
 
 html {
   -webkit-tap-highlight-color: transparent;
+  /* Fluid root: all rem-based sizing (Tailwind spacing/type + custom overrides)
+     scales smoothly with viewport — ~15px on phones/laptops up to 17px on 4K.
+     Also keeps 125%/150% Windows display scaling from breaking the layout. */
+  font-size: clamp(15px, 0.75rem + 0.3vw, 17px);
+  text-size-adjust: 100%;
 }
 
 body {
@@ -69,8 +74,8 @@ body {
 }
 
 ::-webkit-scrollbar {
-  width: 10px;
-  height: 10px;
+  width: 0.625rem;
+  height: 0.625rem;
 }
 
 ::-webkit-scrollbar-thumb {
@@ -95,8 +100,8 @@ body {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 12px;
-  padding: 16px 16px 12px;
+  gap: 0.75rem;
+  padding: 1rem 1rem 0.75rem;
 }
 
 .card-title {
@@ -109,7 +114,7 @@ body {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 6px;
+  gap: 0.375rem;
   white-space: nowrap;
   border-radius: calc(var(--radius) - 2px);
   font-size: 0.875rem;
@@ -250,11 +255,11 @@ input[type="color"] {
 .badge {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  gap: 0.25rem;
   border-radius: 9999px;
   border: 1px solid hsl(var(--border));
-  padding: 2px 10px;
-  font-size: 11px;
+  padding: 0.125rem 0.625rem;
+  font-size: 0.6875rem;
   font-weight: 500;
   line-height: 1.4;
 }
@@ -294,9 +299,9 @@ input[type="color"] {
 .nav-link {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: 0.625rem;
   border-radius: calc(var(--radius) - 2px);
-  padding: 8px 12px;
+  padding: 0.5rem 0.75rem;
   font-size: 0.875rem;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -333,7 +338,7 @@ input[type="color"] {
 
 .task-tab {
   border-radius: calc(var(--radius) - 4px);
-  padding: 6px 14px;
+  padding: 0.375rem 0.875rem;
   font-size: 0.8125rem;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -357,7 +362,7 @@ input[type="color"] {
   justify-content: center;
   min-width: 2rem;
   height: 2rem;
-  padding: 0 6px;
+  padding: 0 0.375rem;
   border-radius: calc(var(--radius) - 4px);
   color: hsl(var(--foreground));
   cursor: pointer;
@@ -373,8 +378,8 @@ input[type="color"] {
   border-radius: calc(var(--radius) - 4px);
   background: transparent;
   color: hsl(var(--foreground));
-  font-size: 12px;
-  padding: 0 6px;
+  font-size: 0.75rem;
+  padding: 0 0.375rem;
   cursor: pointer;
   outline: none;
 }
@@ -386,16 +391,16 @@ input[type="color"] {
 }
 
 .tool-sep {
-  width: 1px;
-  height: 20px;
-  margin: 0 4px;
+  width: 0.0625rem;
+  height: 1.25rem;
+  margin: 0 0.25rem;
   background: hsl(var(--border));
 }
 
 .dropdown-menu {
   position: absolute;
   z-index: 50;
-  min-width: 140px;
+  min-width: 8.75rem;
   overflow: hidden;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--border));
@@ -404,8 +409,8 @@ input[type="color"] {
 }
 
 .swatch {
-  width: 22px;
-  height: 22px;
+  width: 1.375rem;
+  height: 1.375rem;
   border-radius: 6px;
   border: 1px solid rgb(255 255 255 / .18);
   cursor: pointer;
@@ -436,25 +441,25 @@ input[type="color"] {
 .note-editor li { margin: 3px 0; }
 .note-editor blockquote {
   border-left: 3px solid hsl(var(--primary) / .5);
-  padding-left: 12px;
-  margin: 8px 0;
+  padding-left: 0.75rem;
+  margin: 0.5rem 0;
   color: hsl(var(--muted-foreground));
 }
 .note-editor pre {
   background: hsl(var(--secondary));
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   overflow-x: auto;
   font-family: Consolas, monospace;
-  font-size: 13px;
-  margin: 8px 0;
+  font-size: 0.8125rem;
+  margin: 0.5rem 0;
 }
 .note-editor code {
   font-family: Consolas, monospace;
   font-size: 0.85em;
   background: hsl(var(--secondary));
   border-radius: 4px;
-  padding: 1px 5px;
+  padding: 0.0625rem 0.3125rem;
 }
 .note-editor a {
   color: hsl(212 92% 58%);
@@ -464,22 +469,22 @@ input[type="color"] {
 .note-editor img {
   max-width: 100%;
   border-radius: 10px;
-  margin: 6px 0;
+  margin: 0.375rem 0;
   cursor: default;
 }
 .note-editor hr {
   border: none;
   border-top: 1px solid hsl(var(--border));
-  margin: 14px 0;
+  margin: 0.875rem 0;
 }
 .note-editor table {
   border-collapse: collapse;
-  margin: 8px 0;
+  margin: 0.5rem 0;
   max-width: 100%;
 }
 .note-editor th, .note-editor td {
   border: 1px solid hsl(var(--border));
-  padding: 6px 10px;
+  padding: 0.375rem 0.625rem;
   position: relative;
   word-break: break-word;
   overflow-wrap: anywhere;
@@ -493,13 +498,13 @@ input[type="color"] {
 .note-editor ul[data-task],
 .viewer-body ul[data-task] {
   list-style: none;
-  padding-left: 4px;
+  padding-left: 0.25rem;
 }
 
 .note-editor ul[data-task] li,
 .viewer-body ul[data-task] li {
   position: relative;
-  padding-left: 28px;
+  padding-left: 1.75rem;
 }
 
 .note-editor ul[data-task="1"] li::before,
@@ -508,8 +513,8 @@ input[type="color"] {
   position: absolute;
   left: 0;
   top: 4px;
-  width: 17px;
-  height: 17px;
+  width: 1.0625rem;
+  height: 1.0625rem;
   border-radius: 5px;
   border: 1.5px solid hsl(var(--muted-foreground) / .8);
 }
@@ -520,8 +525,8 @@ input[type="color"] {
   position: absolute;
   left: 0;
   top: 4px;
-  width: 17px;
-  height: 17px;
+  width: 1.0625rem;
+  height: 1.0625rem;
   border-radius: 5px;
   background: hsl(var(--primary));
   border: 1.5px solid hsl(var(--primary));
@@ -533,8 +538,8 @@ input[type="color"] {
   position: absolute;
   left: 4px;
   top: 8px;
-  width: 8px;
-  height: 5px;
+  width: 0.5rem;
+  height: 0.3125rem;
   border-left: 2px solid hsl(var(--primary-foreground));
   border-bottom: 2px solid hsl(var(--primary-foreground));
   transform: rotate(-45deg);
@@ -551,8 +556,8 @@ input[type="color"] {
 
 .resize-handle {
   position: absolute;
-  width: 13px;
-  height: 13px;
+  width: 0.8125rem;
+  height: 0.8125rem;
   background: hsl(var(--primary));
   border: 2.5px solid white;
   border-radius: 9999px;
@@ -568,8 +573,8 @@ input[type="color"] {
 #col-resize-handle {
   position: fixed;
   z-index: 85;
-  width: 8px;
-  height: 26px;
+  width: 0.5rem;
+  height: 1.625rem;
   transform: translateX(-50%);
   background: hsl(var(--primary));
   border-radius: 9999px;
@@ -592,7 +597,7 @@ input[type="color"] {
   left: 50%;
   top: 50%;
   z-index: 91;
-  width: calc(100vw - 24px);
+  width: calc(100vw - 1.5rem);
   transform: translate(-50%, -50%);
   border-radius: calc(var(--radius) + 4px);
   border: 1px solid hsl(var(--border));
@@ -602,7 +607,7 @@ input[type="color"] {
   animation: popIn .18s cubic-bezier(.16, 1, .3, 1);
   max-height: 88vh;
   overflow-y: auto;
-  padding: 20px;
+  padding: 1.25rem;
 }
 
 @keyframes fadeIn {
@@ -623,19 +628,19 @@ input[type="color"] {
   z-index: 70;
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: 0.5rem;
 }
 
 .toast {
-  min-width: 220px;
-  max-width: 340px;
+  min-width: 13.75rem;
+  max-width: 21.25rem;
   border-radius: var(--radius);
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
   color: hsl(var(--card-foreground));
   box-shadow: 0 10px 30px rgb(0 0 0 / .3);
-  padding: 11px 14px;
-  font-size: 13px;
+  padding: 0.6875rem 0.875rem;
+  font-size: 0.8125rem;
   animation: toastIn .22s cubic-bezier(.16, 1, .3, 1);
 }
 
@@ -657,20 +662,20 @@ input[type="color"] {
 
 .calendar-head {
   text-align: center;
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   letter-spacing: .04em;
   text-transform: uppercase;
   color: hsl(var(--muted-foreground));
-  padding: 6px 0;
+  padding: 0.375rem 0;
 }
 
 .cal-cell {
-  min-height: 92px;
+  min-height: 5.75rem;
   border-top: 1px solid hsl(var(--border));
   border-left: 1px solid hsl(var(--border));
-  padding: 6px;
-  font-size: 12px;
+  padding: 0.375rem;
+  font-size: 0.75rem;
   cursor: pointer;
   transition: background-color .12s ease;
 }
@@ -696,8 +701,8 @@ input[type="color"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 24px;
-  height: 24px;
+  width: 1.5rem;
+  height: 1.5rem;
   border-radius: 9999px;
   background: hsl(var(--primary));
   color: hsl(var(--primary-foreground));
@@ -706,13 +711,13 @@ input[type="color"] {
 .cal-chip {
   display: block;
   border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 10.5px;
+  padding: 0.0625rem 0.375rem;
+  font-size: 0.6562rem;
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .cal-chip.task {
@@ -737,12 +742,12 @@ input[type="color"] {
 
 .cal-dots {
   display: inline-flex;
-  gap: 3px;
+  gap: 0.1875rem;
 }
 
 .cal-dot {
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 9999px;
 }
 
@@ -761,9 +766,9 @@ input[type="color"] {
 .cal-done-row {
   display: inline-flex;
   align-items: center;
-  gap: 4px;
-  margin-top: 2px;
-  font-size: 10px;
+  gap: 0.25rem;
+  margin-top: 0.125rem;
+  font-size: 0.625rem;
   font-weight: 600;
   color: hsl(142 70% 38%);
 }
@@ -777,8 +782,8 @@ input[type="color"] {
   z-index: 40;
   display: flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
+  gap: 0.125rem;
+  padding: 0.1875rem;
   border-radius: 8px;
   background: hsl(var(--popover));
   border: 1px solid hsl(var(--border));
@@ -789,8 +794,8 @@ input[type="color"] {
 }
 #table-toolbar button {
   border-radius: 6px;
-  padding: 3px 9px;
-  font-size: 11px;
+  padding: 0.1875rem 0.5625rem;
+  font-size: 0.6875rem;
   font-weight: 600;
   line-height: 1.4;
   white-space: nowrap;
@@ -804,9 +809,9 @@ input[type="color"] {
   background: hsl(var(--destructive) / .12);
 }
 #table-toolbar span {
-  width: 1px;
-  height: 16px;
-  margin: 0 3px;
+  width: 0.0625rem;
+  height: 1rem;
+  margin: 0 0.1875rem;
   background: hsl(var(--border));
 }
 
@@ -814,8 +819,8 @@ input[type="color"] {
 #table-resize-handle {
   position: fixed;
   z-index: 85;
-  width: 13px;
-  height: 13px;
+  width: 0.8125rem;
+  height: 0.8125rem;
   background: hsl(var(--primary));
   border: 2.5px solid white;
   border-radius: 4px;
@@ -834,7 +839,7 @@ input[type="color"] {
   display: flex;
   align-items: center;
   justify-content: center;
-  padding: 16px;
+  padding: 1rem;
   overflow-y: auto;
   background:
     radial-gradient(1200px 600px at 10% -10%, hsl(var(--primary) / .18), transparent 60%),
@@ -846,8 +851,8 @@ input[type="color"] {
 }
 .auth-card {
   width: 100%;
-  max-width: 400px;
-  padding: 28px 26px 24px;
+  max-width: 25rem;
+  padding: 1.75rem 1.625rem 1.5rem;
   border-radius: 18px;
   background: hsl(var(--card));
   border: 1px solid hsl(var(--border));
@@ -860,42 +865,42 @@ input[type="color"] {
 }
 .auth-brand {
   text-align: center;
-  margin-bottom: 20px;
+  margin-bottom: 1.25rem;
 }
 .auth-logo {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 46px;
-  height: 46px;
-  margin-bottom: 12px;
+  width: 2.875rem;
+  height: 2.875rem;
+  margin-bottom: 0.75rem;
   border-radius: 14px;
   color: hsl(var(--primary-foreground));
   background: linear-gradient(135deg, hsl(var(--primary)), hsl(265 80% 60%));
   box-shadow: 0 8px 20px hsl(var(--primary) / .35);
 }
 .auth-brand h1 {
-  font-size: 19px;
+  font-size: 1.1875rem;
   font-weight: 700;
   letter-spacing: -.02em;
 }
 .auth-brand p {
-  margin-top: 3px;
-  font-size: 12px;
+  margin-top: 0.1875rem;
+  font-size: 0.75rem;
   color: hsl(var(--muted-foreground));
 }
 .auth-tabs {
   display: flex;
-  gap: 4px;
-  padding: 4px;
-  margin-bottom: 18px;
+  gap: 0.25rem;
+  padding: 0.25rem;
+  margin-bottom: 1.125rem;
   border-radius: 11px;
   background: hsl(var(--secondary));
 }
 .auth-tabs button {
   flex: 1;
-  padding: 8px 6px;
-  font-size: 12.5px;
+  padding: 0.5rem 0.375rem;
+  font-size: 0.7812rem;
   font-weight: 600;
   border-radius: 8px;
   color: hsl(var(--muted-foreground));
@@ -908,17 +913,17 @@ input[type="color"] {
 }
 .auth-form label {
   display: block;
-  margin-bottom: 12px;
-  font-size: 12px;
+  margin-bottom: 0.75rem;
+  font-size: 0.75rem;
   font-weight: 600;
   color: hsl(var(--foreground));
 }
 .auth-form input {
   display: block;
   width: 100%;
-  margin-top: 5px;
-  padding: 9px 12px;
-  font-size: 13.5px;
+  margin-top: 0.3125rem;
+  padding: 0.5625rem 0.75rem;
+  font-size: 0.8438rem;
   border-radius: 9px;
   background: hsl(var(--background));
   border: 1px solid hsl(var(--border));
@@ -930,14 +935,14 @@ input[type="color"] {
   box-shadow: 0 0 0 3px hsl(var(--primary) / .18);
 }
 .auth-hint {
-  margin: -2px 0 12px;
-  font-size: 11px;
+  margin: -0.125rem 0 0.75rem;
+  font-size: 0.6875rem;
   color: hsl(var(--muted-foreground));
 }
 .auth-error {
-  margin: 2px 0 12px;
-  padding: 8px 11px;
-  font-size: 12px;
+  margin: 0.125rem 0 0.75rem;
+  padding: 0.5rem 0.6875rem;
+  font-size: 0.75rem;
   font-weight: 500;
   border-radius: 8px;
   color: hsl(var(--destructive));
@@ -952,8 +957,8 @@ input[type="color"] {
 .user-chip {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  padding: 4px 10px 4px 5px;
+  gap: 0.5rem;
+  padding: 0.25rem 0.625rem 0.25rem 0.3125rem;
   border-radius: 999px;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
@@ -969,9 +974,9 @@ input[type="color"] {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 28px;
-  font-size: 11.5px;
+  width: 1.75rem;
+  height: 1.75rem;
+  font-size: 0.7188rem;
   font-weight: 700;
   border-radius: 999px;
   color: #fff;
@@ -980,9 +985,9 @@ input[type="color"] {
 #user-menu button {
   display: block;
   width: 100%;
-  padding: 7px 11px;
+  padding: 0.4375rem 0.6875rem;
   text-align: left;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 500;
   border-radius: 7px;
 }
@@ -997,8 +1002,8 @@ input[type="color"] {
 }
 .role-badge {
   display: inline-block;
-  padding: 1.5px 8px;
-  font-size: 10px;
+  padding: 0.0938rem 0.5rem;
+  font-size: 0.625rem;
   font-weight: 700;
   letter-spacing: .04em;
   text-transform: uppercase;
@@ -1027,19 +1032,19 @@ input[type="color"] {
 .cal-hol {
   display: block;
   border-radius: 5px;
-  padding: 1px 6px;
-  font-size: 10.5px;
+  padding: 0.0625rem 0.375rem;
+  font-size: 0.6562rem;
   font-weight: 500;
   line-height: 1.5;
   white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  margin-top: 2px;
+  margin-top: 0.125rem;
 }
 
 .cal-hol::before {
   content: "● ";
-  font-size: 8px;
+  font-size: 0.5rem;
   vertical-align: 1px;
 }
 
@@ -1067,7 +1072,7 @@ input[type="color"] {
   border-radius: 9999px;
   border: 1px solid hsl(var(--border));
   background: hsl(var(--card));
-  padding: 6px 14px;
+  padding: 0.375rem 0.875rem;
   font-size: 0.8125rem;
   font-weight: 500;
   color: hsl(var(--muted-foreground));
@@ -1109,14 +1114,14 @@ input[type="color"] {
 
 .ring-label {
   fill: hsl(var(--muted-foreground));
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 600;
   pointer-events: none;
 }
 
 .ring-pct {
   fill: hsl(var(--foreground));
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   pointer-events: none;
 }
@@ -1124,20 +1129,20 @@ input[type="color"] {
 .breakdown-row {
   display: flex;
   align-items: center;
-  gap: 10px;
-  font-size: 12px;
+  gap: 0.625rem;
+  font-size: 0.75rem;
 }
 
 .breakdown-dot {
-  width: 9px;
-  height: 9px;
+  width: 0.5625rem;
+  height: 0.5625rem;
   border-radius: 9999px;
   flex-shrink: 0;
 }
 
 .breakdown-bar {
   flex: 1;
-  height: 7px;
+  height: 0.4375rem;
   border-radius: 9999px;
   background: hsl(var(--secondary));
   overflow: hidden;
@@ -1164,7 +1169,7 @@ input[type="color"] {
 
 @media (min-width: 768px) {
   body.sidebar-mini #sidebar {
-    width: 72px;
+    width: 4.5rem;
   }
   body.sidebar-mini #brand-toggle {
     justify-content: center;
@@ -1192,7 +1197,7 @@ input[type="color"] {
   }
   body.sidebar-mini main.md\:ml-60,
   body.sidebar-mini div.md\:ml-60 {
-    margin-left: 72px;
+    margin-left: 4.5rem;
   }
 }
 
@@ -1223,7 +1228,7 @@ body.sidebar-open #sidebar-overlay {
 }
 
 #note-reader .nr-aside {
-  width: 248px;
+  width: 15.5rem;
   flex-shrink: 0;
   position: sticky;
   top: 1rem;
@@ -1251,7 +1256,7 @@ body.sidebar-open #sidebar-overlay {
 
 /* Detail mode: both side panels */
 #note-reader.nr-detail #related-panel {
-  width: 236px;
+  width: 14.75rem;
 }
 
 .viewer-body {
@@ -1268,8 +1273,8 @@ body.sidebar-open #sidebar-overlay {
 .seg {
   display: inline-flex;
   align-items: center;
-  gap: 2px;
-  padding: 3px;
+  gap: 0.125rem;
+  padding: 0.1875rem;
   border-radius: 9px;
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
@@ -1278,8 +1283,8 @@ body.sidebar-open #sidebar-overlay {
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  width: 28px;
-  height: 26px;
+  width: 1.75rem;
+  height: 1.625rem;
   border: 0;
   border-radius: 7px;
   background: transparent;
@@ -1298,11 +1303,11 @@ body.sidebar-open #sidebar-overlay {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   border-bottom: 1px solid hsl(var(--border));
 }
 .nr-panel-title {
-  font-size: 11px;
+  font-size: 0.6875rem;
   font-weight: 700;
   letter-spacing: 0.06em;
   text-transform: uppercase;
@@ -1311,7 +1316,7 @@ body.sidebar-open #sidebar-overlay {
 .nr-rel-item {
   display: block;
   width: 100%;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   text-align: left;
   border-radius: 9px;
   background: transparent;
@@ -1326,7 +1331,7 @@ body.sidebar-open #sidebar-overlay {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  font-size: 13px;
+  font-size: 0.8125rem;
   font-weight: 600;
 }
 .nr-rel-snippet {
@@ -1334,8 +1339,8 @@ body.sidebar-open #sidebar-overlay {
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
-  margin-top: 2px;
-  font-size: 11px;
+  margin-top: 0.125rem;
+  font-size: 0.6875rem;
   color: hsl(var(--muted-foreground));
 }
 .nr-rel-tags { margin-top: 3px; }
@@ -1362,14 +1367,14 @@ body.sidebar-open #sidebar-overlay {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
   border-radius: 5px;
-  padding: 1px 5px;
+  padding: 0.0625rem 0.3125rem;
   font-size: 0.82em;
 }
 .md-body pre {
   background: hsl(var(--muted));
   border: 1px solid hsl(var(--border));
   border-radius: 8px;
-  padding: 10px 12px;
+  padding: 0.625rem 0.75rem;
   font-size: 0.8em;
   overflow-x: auto;
   margin: 0.5em 0;
@@ -1377,7 +1382,7 @@ body.sidebar-open #sidebar-overlay {
 .md-body pre code { background: transparent; border: 0; padding: 0; color: inherit; }
 .md-body blockquote {
   border-left: 3px solid hsl(var(--border));
-  padding-left: 10px;
+  padding-left: 0.625rem;
   color: hsl(var(--muted-foreground));
   margin: 0.4em 0;
 }
@@ -1398,13 +1403,13 @@ body.sidebar-open #sidebar-overlay {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 0.5rem;
   border-radius: 12px;
   border: 1px solid #d6d9de;
   background-color: #f6f7f9;
   background-image: radial-gradient(rgba(30, 41, 59, 0.16) 1px, transparent 1px);
   background-size: 16px 16px;
-  padding: 8px 10px;
+  padding: 0.5rem 0.625rem;
   overflow: hidden;
 }
 .dark .chat-flow-wrap {
@@ -1415,14 +1420,14 @@ body.sidebar-open #sidebar-overlay {
 .agent-toggle {
   display: inline-flex;
   align-items: center;
-  gap: 7px;
-  height: 36px;
-  padding: 0 12px;
+  gap: 0.4375rem;
+  height: 2.25rem;
+  padding: 0 0.75rem;
   border-radius: 10px;
   border: 1px solid #d6d9de;
   background: transparent;
   color: #475467;
-  font-size: 12px;
+  font-size: 0.75rem;
   font-weight: 600;
   cursor: pointer;
   transition: all 0.15s ease;
@@ -1448,8 +1453,8 @@ body.sidebar-open #sidebar-overlay {
 }
 .agent-toggle-switch {
   position: relative;
-  width: 30px;
-  height: 16px;
+  width: 1.875rem;
+  height: 1rem;
   border-radius: 999px;
   background: #d6d9de;
   transition: background 0.15s ease;
@@ -1462,8 +1467,8 @@ body.sidebar-open #sidebar-overlay {
   position: absolute;
   top: 2px;
   left: 2px;
-  width: 12px;
-  height: 12px;
+  width: 0.75rem;
+  height: 0.75rem;
   border-radius: 50%;
   background: #ffffff;
   box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
@@ -1480,7 +1485,7 @@ body.sidebar-open #sidebar-overlay {
   background: hsl(var(--muted));
 }
 #chat-sessions-col.sessions-collapsed {
-  width: 44px;
+  width: 2.75rem;
   flex: none;
 }
 #chat-sessions-col.sessions-collapsed .conversations-label,
@@ -1497,20 +1502,20 @@ body.sidebar-open #sidebar-overlay {
   z-index: 1;
   display: flex;
   align-items: center;
-  gap: 6px;
+  gap: 0.375rem;
   flex: none;
-  font-size: 9px;
+  font-size: 0.5625rem;
   font-weight: 700;
   letter-spacing: 0.14em;
   text-transform: uppercase;
   color: #7c8494;
-  padding-right: 10px;
+  padding-right: 0.625rem;
   border-right: 1px solid rgba(148, 163, 184, 0.35);
   white-space: nowrap;
 }
 .chat-flow-brand .cf-dot {
-  width: 7px;
-  height: 7px;
+  width: 0.4375rem;
+  height: 0.4375rem;
   border-radius: 50%;
   background: #34d399;
   box-shadow: 0 0 8px #34d399;
@@ -1528,12 +1533,12 @@ body.sidebar-open #sidebar-overlay {
   margin-left: auto;
   display: flex;
   align-items: center;
-  gap: 5px;
-  font-size: 8.5px;
+  gap: 0.3125rem;
+  font-size: 0.5312rem;
   font-weight: 700;
   letter-spacing: 0.1em;
   text-transform: uppercase;
-  padding: 4px 9px;
+  padding: 0.25rem 0.5625rem;
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.35);
   background: rgba(148, 163, 184, 0.1);
@@ -1542,8 +1547,8 @@ body.sidebar-open #sidebar-overlay {
 }
 .chat-flow-live::before {
   content: "";
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: currentColor;
 }
@@ -1558,8 +1563,8 @@ body.sidebar-open #sidebar-overlay {
   position: relative;
   display: flex;
   align-items: center;
-  gap: 8px;
-  padding: 6px 12px 6px 6px;
+  gap: 0.5rem;
+  padding: 0.375rem 0.75rem 0.375rem 0.375rem;
   border-radius: 10px;
   border: none;
   background: transparent;
@@ -1573,8 +1578,8 @@ body.sidebar-open #sidebar-overlay {
   box-shadow: none;
 }
 .chat-flow-icon {
-  width: 30px;
-  height: 30px;
+  width: 1.875rem;
+  height: 1.875rem;
   flex: none;
   border-radius: 8px;
   display: flex;
@@ -1592,11 +1597,11 @@ body.sidebar-open #sidebar-overlay {
 .chat-flow-body {
   display: flex;
   flex-direction: column;
-  gap: 2px;
+  gap: 0.125rem;
   min-width: 0;
 }
 .chat-flow-label {
-  font-size: 10.5px;
+  font-size: 0.6562rem;
   font-weight: 700;
   letter-spacing: 0.01em;
   line-height: 1;
@@ -1605,20 +1610,20 @@ body.sidebar-open #sidebar-overlay {
 }
 .dark .chat-flow-label { color: #e2e8f0; }
 .chat-flow-status {
-  font-size: 8px;
+  font-size: 0.5rem;
   font-weight: 600;
   line-height: 1;
   letter-spacing: 0.08em;
   text-transform: uppercase;
   color: #94a3b8;
-  min-height: 8px;
+  min-height: 0.5rem;
 }
 .chat-flow-dot {
   position: absolute;
   top: 5px;
   right: 6px;
-  width: 6px;
-  height: 6px;
+  width: 0.375rem;
+  height: 0.375rem;
   border-radius: 50%;
   background: #cbd5e1;
   transition: background-color 0.25s, box-shadow 0.25s;
@@ -1682,20 +1687,20 @@ body.sidebar-open #sidebar-overlay {
 .chat-flow-agents {
   display: flex;
   flex-wrap: wrap;
-  gap: 3px;
-  margin-top: 5px;
+  gap: 0.1875rem;
+  margin-top: 0.3125rem;
 }
 .cf-chip {
   display: inline-flex;
   align-items: center;
-  gap: 3px;
-  max-width: 110px;
-  padding: 1.5px 7px;
+  gap: 0.1875rem;
+  max-width: 6.875rem;
+  padding: 0.0938rem 0.4375rem;
   border-radius: 999px;
   border: 1px solid hsl(var(--chip-h, 262) 80% 58% / 0.45);
   background: hsl(var(--chip-h, 262) 80% 62% / 0.14);
   color: hsl(var(--chip-h, 262) 85% 44%);
-  font-size: 10px;
+  font-size: 0.625rem;
   font-weight: 700;
   line-height: 1.4;
   white-space: nowrap;
@@ -1711,14 +1716,14 @@ body.sidebar-open #sidebar-overlay {
 .chat-agent-by {
   display: inline-flex;
   align-items: center;
-  gap: 6px;
-  margin-top: 6px;
-  padding: 4px 10px;
+  gap: 0.375rem;
+  margin-top: 0.375rem;
+  padding: 0.25rem 0.625rem;
   border-radius: 999px;
   border: 1px solid hsl(var(--chip-h, 210) 24% 46% / 0.2);
   background: hsl(var(--chip-h, 210) 24% 55% / 0.09);
   color: hsl(var(--chip-h, 210) 16% 60%);
-  font-size: 10.5px;
+  font-size: 0.6562rem;
   font-weight: 600;
   line-height: 1;
   width: fit-content;
@@ -1738,18 +1743,18 @@ body.sidebar-open #sidebar-overlay {
 .chat-agent-by .cab-role {
   color: #94a3b8;
   font-weight: 500;
-  max-width: 200px;
+  max-width: 12.5rem;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 .chat-agent-by .cab-tag {
-  margin-left: 2px;
-  padding: 2px 6px;
+  margin-left: 0.125rem;
+  padding: 0.125rem 0.375rem;
   border-radius: 999px;
   background: hsl(var(--chip-h, 262) 89% 66% / 0.14);
   color: hsl(var(--chip-h, 262) 89% 66%);
-  font-size: 8.5px;
+  font-size: 0.5312rem;
   font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.05em;
@@ -1761,13 +1766,13 @@ body.sidebar-open #sidebar-overlay {
   display: flex;
   align-items: center;
   flex: 1 0 34px;
-  height: 26px;
-  max-width: 46px;
+  height: 1.625rem;
+  max-width: 2.875rem;
 }
 .chat-flow-wire {
   position: relative;
   width: 100%;
-  height: 2px;
+  height: 0.125rem;
   border-radius: 2px;
   background: #cbd5e1;
 }
@@ -1776,9 +1781,9 @@ body.sidebar-open #sidebar-overlay {
   position: absolute;
   top: 50%;
   left: -3px;
-  width: 10px;
-  height: 10px;
-  margin-top: -5px;
+  width: 0.625rem;
+  height: 0.625rem;
+  margin-top: -0.3125rem;
   border-radius: 50%;
   background: #ffffff;
   box-shadow: 0 0 8px #60a5fa, 0 0 18px #3b82f6;
@@ -1832,22 +1837,22 @@ body.sidebar-open #sidebar-overlay {
 
 /* ---- Activity Log (Settings -> AI Models) ---- */
 .ai-log-list {
-  max-height: 320px;
+  max-height: 20rem;
   overflow-y: auto;
-  padding: 6px;
+  padding: 0.375rem;
   border: 1px solid hsl(var(--border));
   border-radius: 0.5rem;
   background: hsl(var(--background) / 0.4);
   font-family: ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
-  font-size: 11px;
+  font-size: 0.6875rem;
 }
 .ai-log-list::-webkit-scrollbar { width: 8px; }
 .ai-log-list::-webkit-scrollbar-thumb { background: hsl(var(--muted)); border-radius: 8px; }
 .ai-log-item {
   display: flex;
   align-items: baseline;
-  gap: 8px;
-  padding: 5px 8px;
+  gap: 0.5rem;
+  padding: 0.3125rem 0.5rem;
   border-radius: 6px;
   border-left: 3px solid transparent;
   line-height: 1.45;
@@ -1865,3 +1870,75 @@ body.sidebar-open #sidebar-overlay {
 .ai-log-item.log-warning .ai-log-msg { color: #d97706; }
 .ai-log-item.log-info .ai-log-lvl { color: hsl(var(--muted-foreground)); }
 .ai-log-item.log-info .ai-log-msg { color: hsl(var(--foreground) / 0.75); }
+
+/* ==========================================================================
+   Responsive / Fluid scaling (enterprise-grade across monitors & laptops)
+   ========================================================================== */
+
+/* 2. Container boundary — content must never stretch across ultra-wides */
+main {
+  width: 100%;
+  max-width: 1600px;
+  margin-inline: auto;
+}
+
+/* 3. Sidebar fluidity — proportional width on big screens, compact on laptops */
+@media (min-width: 768px) {
+  body:not(.sidebar-mini) #sidebar { width: clamp(15rem, 17vw, 19rem); }
+  body:not(.sidebar-mini) div.md\:ml-60
+  , body:not(.sidebar-mini) main.md\:ml-60 { margin-left: clamp(15rem, 17vw, 19rem); }
+  #chat-sessions-col { width: clamp(14rem, 18vw, 18rem); }
+
+  /* Mini sidebar: compact but still scales with the fluid root */
+  body.sidebar-mini #sidebar { width: 4.5rem; }
+  body.sidebar-mini div.md\:ml-60,
+  body.sidebar-mini main.md\:ml-60 { margin-left: 4.5rem; }
+}
+
+/* 3. Card grids — auto-fit so Notes / Pages / Web-portals / Agents reflow to
+   any width (overrides the fixed sm:/lg:/xl: breakpoints; no overflow). */
+#notes-grid,
+#pages-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+}
+#portals-grid {
+  grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));
+}
+#agents-grid {
+  grid-template-columns: repeat(auto-fit, minmax(min(100%, 340px), 1fr));
+}
+
+/* All inline tailwind grids (dashboard, dialogs) must be allowed to shrink */
+.view .grid,
+.dialog-panel,
+.card { min-width: 0; }
+
+/* 1. Fluid headings — clamp so large monitors get larger, readable type */
+.viewer-body h1 { font-size: clamp(1.6rem, 1.2rem + 1vw, 2.2rem); }
+.viewer-body h2 { font-size: clamp(1.3rem, 1.05rem + 0.8vw, 1.7rem); }
+.viewer-body h3 { font-size: clamp(1.1rem, 0.95rem + 0.6vw, 1.4rem); }
+.note-editor h1 { font-size: clamp(1.5rem, 1.15rem + 1vw, 2rem); }
+.note-editor h2 { font-size: clamp(1.2rem, 1rem + 0.7vw, 1.5rem); }
+.note-editor h3 { font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.25rem); }
+
+/* 4. OS zoom / DPI safety — the chat send row wraps instead of hiding
+   controls, and text cells never push the layout wider than the screen. */
+#chat-form > div:last-child { flex-wrap: wrap; }
+#chat-input { flex: 1 1 10rem; min-width: 0; }
+#chat-main,
+#chat-messages,
+#chat-titlebar,
+#chat-sessions-col,
+#chat-sessions { min-width: 0; }
+#chat-status { flex-shrink: 0; }
+#chat-messages,
+.md-body { width: 100%; }
+#view-chat .card-header .flex { flex-wrap: wrap; }
+
+/* Long chat messages / tables must never create horizontal page scroll */
+#chat-messages { overflow-wrap: anywhere; }
+.md-table-wrap { max-width: 100%; }
+
+/* Tables & code blocks inside the viewer stay inside their card */
+.viewer-body .md-table-wrap,
+.viewer-body pre { max-width: 100%; }
