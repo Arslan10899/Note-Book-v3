@@ -1958,5 +1958,62 @@ class TestSystemGuide(BaseTest):
         self.assertIn("actions", ids)
 
 
+class TestEmbedCooldown(BaseTest):
+    """Embeddings cooldown: a dead provider disables semantic search
+    fast and persists the state so app restarts don't re-probe the host."""
+
+    def test_dead_provider_triggers_cooldown_fast_path(self):
+        import os as _os
+        _os.environ["GEMINI_API_KEY"] = "test-key-for-cooldown"
+        try:
+            app_module._embedding_disabled = False
+            app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, "")
+            self.assertFalse(app_module._embed_cooldown_active())
+            original_embed = app_module._embed_one
+            app_module._embed_one = lambda *a, **k: None
+            try:
+                results = app_module._semantic_search("anything at all")
+                self.assertEqual(results, [])
+                self.assertTrue(app_module._embedding_disabled)
+                self.assertTrue(app_module._embed_cooldown_active())
+            finally:
+                app_module._embed_one = original_embed
+        finally:
+            _os.environ.pop("GEMINI_API_KEY", None)
+            app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, "")
+            app_module._embedding_disabled = False
+
+    def test_cooldown_survives_flag_reset(self):
+        import time as _time
+        app_module._embedding_disabled = False
+        app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, str(_time.time() + 9999))
+        self.assertFalse(app_module._embedding_disabled)
+        self.assertTrue(app_module._embed_cooldown_active())
+        provider = app_module._embed_provider_name()
+        self.assertEqual(provider, "")
+        self.assertTrue(app_module._embedding_disabled)
+        app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, "")
+        app_module._embedding_disabled = False
+
+    def test_working_provider_not_disabled(self):
+        import os as _os
+        _os.environ["GEMINI_API_KEY"] = "test-ok"
+        try:
+            app_module._embedding_disabled = False
+            app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, "")
+            original = app_module._embed_one
+            app_module._embed_one = lambda *a, **k: [0.1, 0.2, 0.3]
+            try:
+                vec = app_module._embed_text("hello world")
+                self.assertIsNotNone(vec)
+                self.assertFalse(app_module._embedding_disabled)
+            finally:
+                app_module._embed_one = original
+        finally:
+            _os.environ.pop("GEMINI_API_KEY", None)
+            app_module._set_app_setting(app_module._EMBED_COOLDOWN_KEY, "")
+            app_module._embedding_disabled = False
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

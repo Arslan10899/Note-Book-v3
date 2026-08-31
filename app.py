@@ -1445,20 +1445,48 @@ def _fts_matches(question, limit=4):
 
 # ---- Semantic search via embeddings (Phase 2) ----------------------------
 # Document vectors are cached in embed_vectors and refreshed lazily when the
-# library changes. Any failure disables the whole embeddings layer for the rest
-# of the process so chat never hangs; everything degrades to FTS/LIKE.
+# library changes. Any failure disables the whole embeddings layer for a short
+# cooldown period (persisted to app_settings) so chat never hangs waiting on a
+# dead embedding host; everything degrades to FTS/LIKE.
 
 _embedding_disabled = False
 _EMBED_SIM_THRESHOLD = 0.32
+_EMBED_COOLDOWN_KEY = "embed_retry_after"
+# Once the embedding provider fails, semantic search stays disabled this long
+# (even across app restarts) before we probe it again.
+_EMBED_COOLDOWN_SECONDS = 600
 # Question embeddings are cached so the two _search_best calls per user
 # message (RAG node + answer) embed the question only once.
 _embed_cache = {}
 _EMBED_CACHE_CAP = 24
 
 
+def _embed_cooldown_active():
+    """True while a dead embedding provider is in cooldown (persisted, so app
+    restarts don't immediately hammer the host again with slow connects)."""
+    try:
+        row = _app_setting(_EMBED_COOLDOWN_KEY)
+        if row:
+            return time.time() < float(row)
+    except (TypeError, ValueError):
+        pass
+    return False
+
+
+def _mark_embed_dead():
+    """Disable semantic search for the cooldown window after a provider failure."""
+    global _embedding_disabled
+    _embedding_disabled = True
+    _set_app_setting(_EMBED_COOLDOWN_KEY, str(time.time() + _EMBED_COOLDOWN_SECONDS))
+
+
 def _embed_provider_name():
     """Chosen embeddings provider, or '' when none is usable."""
+    global _embedding_disabled
     if _embedding_disabled:
+        return ""
+    if _embed_cooldown_active():
+        _embedding_disabled = True
         return ""
     preferred = _app_setting("embed_provider", "").strip()
     for cand in (preferred,) + ("omni", "gemini", "openai", "groq"):
@@ -1511,6 +1539,9 @@ def _embed_one(text, provider):
 def _embed_text(text):
     """Try each usable provider in order until a vector comes back."""
     global _embedding_disabled
+    if _embed_cooldown_active():
+        _embedding_disabled = True
+        return None
     chosen = _embed_provider_name()
     if not chosen or _embedding_disabled:
         return None
@@ -1527,7 +1558,7 @@ def _embed_text(text):
             return vec
     except Exception:
         pass
-    _embedding_disabled = True
+    _mark_embed_dead()
     logger.warning("embeddings unavailable for provider %s — turning off semantic search for this session", chosen)
     return None
 
@@ -1546,7 +1577,8 @@ def _cosine(a, b):
 def _ensure_embeddings():
     """Lazily embed new/changed library entries. Returns True when vectors are usable."""
     global _embedding_disabled
-    if _embedding_disabled:
+    if _embedding_disabled or _embed_cooldown_active():
+        _embedding_disabled = True
         return False
     conn = get_db()
     try:
@@ -1566,7 +1598,11 @@ def _ensure_embeddings():
                 continue
             vec = _embed_text((e["title"] + "\n" + e["text"])[:2000])
             if not vec:
-                break
+                # Provider just failed: don't stamp the digest (else a fixed
+                # provider would never re-embed), flip the cooldown, and bail.
+                _mark_embed_dead()
+                conn.close()
+                return False
             conn.execute(
                 "INSERT INTO embed_vectors (doc_key, kind, title, tag, text, content_hash, vector, provider, updated_at) "
                 "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1581,7 +1617,7 @@ def _ensure_embeddings():
         return True
     except Exception as e:
         logger.warning("embeddings layer disabled: %s", e)
-        _embedding_disabled = True
+        _mark_embed_dead()
         return False
     finally:
         conn.close()
