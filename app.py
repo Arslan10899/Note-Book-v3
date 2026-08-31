@@ -877,6 +877,7 @@ def auth_guard():
         p.startswith("/api/auth/")
         or p.startswith("/static")
         or (request.method == "GET" and p == "/")
+        or (request.method == "GET" and p == "/system-guide")
         or (request.method == "GET" and p.startswith("/s/"))
         # Images referenced from public share pages must load without a session
         or (request.method == "GET" and p.startswith("/uploads/"))
@@ -6570,6 +6571,121 @@ def agents_list():
     })
 
 
+# ---- System Guide capability matrix ------------------------------------
+# Human-readable capability catalog served to the System Guide docs page.
+# Assignment is derived from each agent's name/description/system_prompt
+# markers, so nothing is hardcoded per specific agent — only live agent_memory
+# rows feed the "learned" panel.
+
+_SYSTEM_CAPABILITIES = {
+    "rag": {
+        "id": "rag", "name": "Semantic RAG Search", "icon": "search",
+        "desc": "Notes, pages & knowledge base matches with smart synthesis — never raw dumps",
+    },
+    "sql": {
+        "id": "sql", "name": "SQL Query Tool", "icon": "database",
+        "desc": "Read-only SELECT on app tables — counts, trends, filtering & lookups",
+    },
+    "memory": {
+        "id": "memory", "name": "Memory Tool", "icon": "bookmark",
+        "desc": "Learned rules & payer guidelines merged into the agent prompt",
+    },
+    "actions": {
+        "id": "actions", "name": "Actions Agent", "icon": "zap",
+        "desc": "Create / edit / delete tasks, notes, pages, schedule, guidelines & conversations",
+    },
+    "portal": {
+        "id": "portal", "name": "API & Portal Fetch", "icon": "link",
+        "desc": "External sheets & APIs from the tool inventory",
+    },
+    "file": {
+        "id": "file", "name": "File Engine", "icon": "file-text",
+        "desc": "In-memory XLSX (formulas & formats) / DOCX / PDF / TXT generation with downloads",
+    },
+    "claims": {
+        "id": "claims", "name": "Claim Rule Validator", "icon": "stethoscope",
+        "desc": "CPT / ICD / modifier & payer-rule consistency checks",
+    },
+    "schedule": {
+        "id": "schedule", "name": "Schedule Manager", "icon": "calendar",
+        "desc": "Routines, calendar events & task due-date tracking",
+    },
+}
+
+
+def _agent_capabilities(agent, has_api_tools=False):
+    """Derive the assigned toolset for one agent from its own metadata."""
+    blob = (" %s %s %s " % (
+        agent.get("name") or "", agent.get("description") or "", agent.get("system_prompt") or "",
+    )).lower()
+    ids = ["rag", "sql", "memory", "actions"]
+    if has_api_tools:
+        ids.append("portal")
+    if re.search(r"\bexecutive\b|\bfile[s]?\b|\bexcel\b|\bword\b|\bpdf\b|\bdocument\b|\bxlsx\b|\bbaazaz\b", blob):
+        ids.append("file")
+    if re.search(r"medical[ -]?billing|\binsurance\b|\bclaim[s]?\b|\brcm\b|\bdenial\b|\bappeal\b", blob):
+        ids.append("claims")
+    if re.search(r"\badmin\b|\bmanager\b|\bcoordinator\b|\bboss\b|\bowner\b|\bschedule\b|\bcalendar\b", blob):
+        ids.append("schedule")
+    return [dict(_SYSTEM_CAPABILITIES[i]) for i in ids]
+
+
+@app.get("/api/system/capabilities")
+def system_capabilities():
+    conn = get_db()
+
+    def _count(table):
+        return conn.execute(f"SELECT COUNT(*) c FROM {table}").fetchone()["c"]
+
+    has_api_tools = _count("api_tools") > 0
+    agents = conn.execute(
+        "SELECT id, name, icon, description, system_prompt, is_active, created_at "
+        "FROM chat_agents ORDER BY id DESC"
+    ).fetchall()
+    mem_rows = conn.execute(
+        "SELECT id, agent_id, kind, key, content, source, created_by, created_at, updated_at "
+        "FROM agent_memory ORDER BY id ASC"
+    ).fetchall()
+    stats = {
+        "notes": _count("notes"),
+        "tasks": _count("tasks"),
+        "pages": _count("pages"),
+        "knowledge": _count("knowledge_base"),
+        "routines": _count("routines"),
+        "api_tools": _count("api_tools"),
+        "chat_sessions": _count("chat_sessions"),
+        "chat_messages": _count("chat_messages"),
+        "agents": _count("chat_agents"),
+        "agents_active": conn.execute("SELECT COUNT(*) c FROM chat_agents WHERE is_active=1").fetchone()["c"],
+        "memory_rows": _count("agent_memory"),
+        "agent_audit": _count("agent_audit"),
+        "notes_versions": _count("note_versions"),
+        "agent_enabled": _agent_enabled(),
+        "live_chat": _live_chat_enabled(),
+        "review_enabled": _review_enabled(),
+        "provider_active": bool(_provider_key(_active_provider())),
+        "provider_label": CHAT_PROVIDERS.get(_active_provider(), CHAT_PROVIDERS["gemini"])["label"],
+        "export_capable": True,
+    }
+    memory = {}
+    for m in mem_rows:
+        memory.setdefault(m["agent_id"], []).append(dict(m))
+    out_agents = []
+    for r in agents:
+        a = dict(r)
+        a["capabilities"] = _agent_capabilities(a, has_api_tools)
+        a["memory"] = memory.get(a["id"], [])
+        a["is_active"] = bool(a["is_active"])
+        out_agents.append(a)
+    conn.close()
+    return jsonify({
+        "agents": out_agents,
+        "active_ids": [a["id"] for a in out_agents if a["is_active"]],
+        "stats": stats,
+        "capabilities": [dict(_SYSTEM_CAPABILITIES[i]) for i in _SYSTEM_CAPABILITIES],
+    })
+
+
 @app.post("/api/agents")
 @admin_only
 def agents_create():
@@ -7689,6 +7805,12 @@ def export_page_xlsx(pid):
 
 @app.get("/")
 def index():
+    return render_template("index.html")
+
+
+@app.get("/system-guide")
+def system_guide_page():
+    """Dedicated docs page for the System Guide (built-in SPA view)."""
     return render_template("index.html")
 
 

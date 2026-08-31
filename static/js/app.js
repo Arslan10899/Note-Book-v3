@@ -25,7 +25,7 @@ let HOLIDAYS = {};
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents" };
+const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -222,6 +222,7 @@ async function switchView(name) {
   else if (name === "knowledge") loadKnowledge();
   else if (name === "chat-settings") loadChatSettings();
   else if (name === "agents") loadAgents();
+  else if (name === "system-guide") loadSystemGuide();
   else if (name === "calendar") {
     HOLIDAYS = buildHolidaysForYear(state.calY);
     renderCalendar();
@@ -4867,6 +4868,7 @@ async function loadAgents() {
   }
   agentsState.loading = false;
   renderAgents();
+  refreshSystemGuideSilently();
 }
 
 function refreshAgentsSilently() {
@@ -4879,6 +4881,7 @@ function refreshAgentsSilently() {
       mentionAgents = res.agents.filter((a) => a && a.is_active && (a.name || "").trim());
       mentionLoaded = true;
       renderAgents();
+      refreshSystemGuideSilently();
     })
     .catch(() => {});
 }
@@ -5040,7 +5043,7 @@ function bindAgentMemory(root, a, opts = {}) {
   bindAgentMemoryListActions(root, a);
 }
 
-function openAgentMemoryDialog(a) {
+function openAgentMemoryDialog(a, opts = {}) {
   if (!a) return;
   openDialog(`
     <div class="flex items-start justify-between gap-3">
@@ -5055,6 +5058,274 @@ function openAgentMemoryDialog(a) {
   `);
   $("#dialog-root").querySelector("[data-close-dialog-panel]").addEventListener("click", closeDialog);
   bindAgentMemory($("#dialog-root"), a, { panel: false });
+  if (opts && opts.focusAdd) {
+    setTimeout(() => {
+      const ta = $("#dialog-root").querySelector("[data-mem-content]");
+      if (ta) ta.focus();
+    }, 60);
+  }
+}
+
+// ---- System Guide (live capability docs page) ----------------------------
+// Tab 1: modules & shortcuts. Tab 2: agents with live memory + toolset.
+// Tab 3: maker-checker data flow. All data comes from /api/system/capabilities;
+// nothing about agents is hardcoded here — memory rows are live from the DB.
+
+let systemGuide = { data: null, loaded: false, tab: "modules" };
+
+const SG_MODULES = [
+  {
+    icon: "\ud83d\udce1", title: "Notes & Knowledge Base", desc: "Markdown editor, version history, RAG semantic search over notes, pages & guidelines",
+    main: "notes", label: "notes", countKey: "notes", count: (s) => s.notes + s.knowledge,
+    tag: "Markdown \u00b7 RAG \u00b7 Ctrl+P",
+  },
+  {
+    icon: "\ud83d\udccb", title: "Tasks & Schedules", desc: "Task collections, due dates aur routines — agent inhe likh / update bhi kar sakta hai",
+    main: "tasks", label: "task list", countKey: "tasks", count: (s) => s.tasks + s.routines,
+    tag: "tasks \u00b7 routines \u00b7 due dates",
+  },
+  {
+    icon: "\ud83d\uddd3", title: "Calendar & Web Portals", desc: "Calendar views, events aur external portals — daily work ka central board",
+    main: "webportals", label: "links", countKey: "api_tools", count: (s) => s.pages + s.api_tools,
+    tag: "calendar \u00b7 portals \u00b7 pages",
+  },
+  {
+    icon: "\ud83d\udcbe", title: "Backups & Downloads", desc: "In-memory SQLite / Excel / JSON exports, tasks & pages ki xlsx files — bilkul portable",
+    main: "dashboard", label: "formats", countKey: "export_capable", count: (s) => (s.export_capable ? 3 : 0),
+    tag: "JSON \u00b7 Excel \u00b7 SQLite",
+  },
+];
+
+const SG_SHORTCUTS = [
+  { keys: ["Ctrl", "P"], or: ["Ctrl", "K"], label: "Quick Search — kisi bhi note, task, page tak foori pahunch" },
+  { keys: ["@"], label: "Agent Autocomplete — chat mein kisi agent ko turant line" },
+  { keys: ["Ctrl", "I"], label: "Composer — kahin se bhi chat box par focus" },
+  { keys: ["Ctrl", "F"], label: "Find & Replace — notes ke editor ke andar" },
+];
+
+const SG_FLOW_STEPS = [
+  { icon: "\ud83d\udcac", title: "User Input @Agent", desc: "Chat mein question / command — jo agent bhi mention ho, usi ko forci baat milti hai" },
+  { icon: "\ud83d\uddc4\ufe0f", title: "SQLite RAG Context", desc: "Matching notes, pages & guidelines semantic search se nikle aur provider ko context mile" },
+  { icon: "\ud83e\udde0", title: "Agent Tool Logic", desc: "Agent apni memory + qabliyat dekhta hai; action decide hota hai: SQL / file / API / data" },
+  { icon: "\u2696\ufe0f", title: "Maker-Checker Review", desc: "Create-update-delete draft strong model se re-check hota hai pehle (agar review ON ho)" },
+  { icon: "\u2705", title: "Action Execution / Download", desc: "Confirmed action execute, file milti hai download badge ke saath, audit log mein jaati hai" },
+];
+
+function sgIcon(iconName, cls) {
+  if (iconName && String(iconName).startsWith("lucide:") && isLucideIcon(iconName)) return pageIconHTML(iconName, cls);
+  return "";
+}
+
+function sgStatusChip(on, label) {
+  return `<span class="sg-status-chip ${on ? "on" : "off"}"><span class="sg-dot"></span>${escapeHtml(label)}</span>`;
+}
+
+async function loadSystemGuide(soft) {
+  try {
+    const res = await api("/api/system/capabilities");
+    if (!res) return;
+    systemGuide.data = res;
+    systemGuide.loaded = true;
+    renderSystemGuide();
+  } catch (err) {
+    if (!soft) toast(err.message, "error");
+  }
+}
+
+function refreshSystemGuideSilently() {
+  if (state.view === "system-guide" && systemGuide.loaded) loadSystemGuide(true);
+}
+
+function renderSystemGuide() {
+  const s = systemGuide.data;
+  if (!s) return;
+  $("#sg-status-chips").innerHTML = [
+    sgStatusChip(s.stats.agent_enabled, "Agent " + (s.stats.agent_enabled ? "ON" : "OFF")),
+    sgStatusChip(s.stats.live_chat, "Live chat " + (s.stats.live_chat ? "ON" : "OFF")),
+    sgStatusChip(s.stats.review_enabled, "Maker-Checker " + (s.stats.review_enabled ? "ON" : "OFF")),
+    `<span class="sg-status-chip on"><span class="sg-dot"></span>${escapeHtml(s.stats.provider_label)}</span>`,
+  ].join("");
+  renderSGModules(s);
+  renderSGShortcuts();
+  renderSGAgents(s);
+  renderSGDataFlow(s);
+  const empty = $("#sg-agents-empty");
+  if (empty) empty.classList.toggle("hidden", (s.agents || []).length > 0);
+}
+
+function sgModuleCountHTML(s, m) {
+  const v = m.count(s.stats);
+  if (v <= 0) return `<span class="sg-mod-count zero">0</span>`;
+  return `<span class="sg-mod-count">${v}</span>`;
+}
+
+function renderSGModules(s) {
+  const grid = $("#sg-modules-grid");
+  if (!grid) return;
+  grid.innerHTML = SG_MODULES.map((m) => `
+    <div class="sg-mod">
+      <div class="sg-mod-ico">${m.icon}</div>
+      <div class="min-w-0">
+        <div class="flex items-center gap-2">
+          <h4 class="sg-mod-title">${escapeHtml(m.title)}</h4>
+          ${sgModuleCountHTML(s, m)}
+        </div>
+        <p class="sg-mod-desc">${escapeHtml(m.desc)}</p>
+        <p class="sg-mod-tag">${escapeHtml(m.tag)}</p>
+      </div>
+      ${m.main ? `<a href="#/${m.main}" class="btn btn-ghost btn-sm shrink-0">Open</a>` : ""}
+    </div>`).join("");
+}
+
+function renderSGShortcuts() {
+  const el = $("#sg-shortcuts");
+  if (!el) return;
+  el.innerHTML = SG_SHORTCUTS.map((s) => `
+    <div class="sg-shortcut">
+      <div class="sg-kbd">
+        ${(s.keys || []).map((k) => `<kbd>${escapeHtml(k)}</kbd>`).join("")}
+        ${s.or && s.or.length ? `<span class="sg-kbd-or">or</span>${s.or.map((k) => `<kbd>${escapeHtml(k)}</kbd>`).join("")}` : ""}
+      </div>
+      <span class="text-xs text-muted-foreground">${escapeHtml(s.label)}</span>
+    </div>`).join("");
+}
+
+function sgCapabilityChip(cap) {
+  if (!cap) return "";
+  return `<span class="sg-cap" title="${escapeHtml(cap.desc)}">${sgIcon("lucide:" + cap.icon, "sg-cap-ico") || ""}<span>${escapeHtml(cap.name)}</span></span>`;
+}
+
+function sgMemoryPreview(a, max = 4) {
+  const rows = a.memory || [];
+  const head = rows.slice(0, max);
+  const more = rows.length - head.length;
+  let body = head.map((m) => `
+    <div class="sg-mrow">
+      ${agentMemoryKindBadge(m.kind)}
+      <span class="sg-mkey">${escapeHtml(m.key || m.kind || "note")}</span>
+      <p class="sg-mcontent">${escapeHtml(String(m.content || "").slice(0, 95))}</p>
+    </div>`).join("");
+  if (!head.length) body = `<p class="text-sm italic text-muted-foreground">Abhi koi memory nahi — Add Instruction se ya Chat se save karein.</p>`;
+  return { body, more };
+}
+
+function renderSGAgents(s) {
+  const grid = $("#sg-agents-grid");
+  if (!grid) return;
+  const agents = s.agents || [];
+  grid.innerHTML = agents.map((a) => {
+    const active = !!a.is_active;
+    const initials = escapeHtml(String(a.name || "?").charAt(0).toUpperCase());
+    const preferredIcon = a.icon || agentDefaultIcon(a) || "";
+    const avatar = agentIconIsRenderable(preferredIcon) ? pageIconHTML(preferredIcon, "h-5 w-5") : `<span class="text-base font-bold">${initials}</span>`;
+    const mem = sgMemoryPreview(a, 3);
+    return `
+    <div class="sg-agent">
+      <div class="flex items-center gap-3">
+        <div class="flex h-10 w-10 shrink-0 items-center justify-center rounded-xl bg-primary/10">${avatar}</div>
+        <div class="min-w-0">
+          <div class="flex flex-wrap items-center gap-2">
+            <h4 class="sg-agent-name">${escapeHtml(a.name || "Agent")}</h4>
+            ${agentActiveBadge(active)}
+          </div>
+          <p class="truncate text-[11px] text-muted-foreground" title="${escapeHtml(a.description || "")}">${escapeHtml((a.description || "Koi kaam nahi likha").slice(0, 90))}</p>
+        </div>
+      </div>
+      <div class="mt-3">
+        <p class="sg-label">Assigned Toolset</p>
+        <div class="sg-caps">${(a.capabilities || []).map(sgCapabilityChip).join("") || `<span class="text-xs text-muted-foreground">Base toolkit</span>`}</div>
+      </div>
+      <div class="mt-3">
+        <p class="sg-label">Live Memory <span class="sg-mem-count">(${(a.memory || []).length})</span></p>
+        <div class="sg-memory">${mem.body}</div>
+        ${mem.more ? `<button type="button" class="sg-mem-more" data-sg-mem-full="${a.id}">+ ${mem.more} aur dekhein</button>` : ""}
+      </div>
+      <div class="mt-3 flex flex-wrap items-center gap-2">
+        <button type="button" class="btn btn-outline btn-sm" data-sg-mem-edit="${a.id}">Edit Rules</button>
+        <button type="button" class="btn btn-primary btn-sm" data-sg-mem-add="${a.id}">Add Instruction</button>
+      </div>
+    </div>`;
+  }).join("");
+}
+
+function sgStepHTML(step, i, n) {
+  return `
+    <div class="sg-step">
+      <div class="sg-step-top">
+        <span class="sg-step-ico">${step.icon}</span>
+        <span class="sg-step-num">${i + 1}</span>
+      </div>
+      <h4 class="sg-step-title">${escapeHtml(step.title)}</h4>
+      <p class="sg-step-desc">${escapeHtml(step.desc)}</p>
+    </div>
+    ${i < n - 1 ? `<div class="sg-step-arrow">\u2192</div>` : ""}`;
+}
+
+function renderSGDataFlow(s) {
+  const el = $("#sg-dataflow");
+  if (el) el.innerHTML = `<div class="sg-flow">${SG_FLOW_STEPS.map((st, i) => sgStepHTML(st, i, SG_FLOW_STEPS.length)).join("")}</div>`;
+
+  const cards = $("#sg-smart-cards");
+  if (!cards) return;
+  const st = s.stats;
+  cards.innerHTML = [
+    sgSmartCard("Agent Mode", st.agent_enabled ? "ON" : "OFF", st.agent_enabled ? "Albatta — data change allowed hai" : "Sirf smarter search / replies"),
+    sgSmartCard("Maker-Checker", st.review_enabled ? "ON" : "OFF", `${st.agent_audit} audit + review actions recorded`),
+    sgSmartCard("AI Provider", st.provider_active ? st.provider_label : "no key", st.provider_active ? "Key configured & active" : "AI Models settings mein key lagayein"),
+    sgSmartCard("Conversations", st.chat_sessions, `${st.chat_messages} messages total`),
+    sgSmartCard("Agents", `${st.agents_active}/${st.agents} active`, `${st.memory_rows} learned rules stored`),
+    sgSmartCard("Knowledge", st.knowledge + st.notes, `${st.notes} notes · ${st.knowledge} KB entries`),
+  ].join("");
+}
+
+function sgSmartCard(title, value, note) {
+  return `
+    <div class="sg-smart">
+      <div class="flex items-baseline justify-between gap-2">
+        <h4>${escapeHtml(title)}</h4>
+        <span class="sg-smart-val">${value}</span>
+      </div>
+      <p class="text-xs text-muted-foreground">${escapeHtml(note)}</p>
+    </div>`;
+}
+
+function bindSystemGuideTabs() {
+  const tabs = $("#sg-tabs");
+  if (!tabs) return;
+  const onClick = (e) => {
+    const btn = e.target.closest("[data-sg-tab]");
+    if (!btn) return;
+    const tab = btn.dataset.sgTab;
+    systemGuide.tab = tab;
+    $$("#sg-tabs .sg-tab").forEach((b) => b.classList.toggle("active", b.dataset.sgTab === tab));
+    $$("#view-system-guide .sg-panel").forEach((p) => p.classList.toggle("active", p.dataset.sgPanel === tab));
+  };
+  tabs.addEventListener("click", onClick);
+}
+
+function bindSystemGuideActions() {
+  const root = document.body;
+  root.addEventListener("click", (e) => {
+    const editBtn = e.target.closest("[data-sg-mem-edit]");
+    const addBtn = e.target.closest("[data-sg-mem-add]");
+    const moreBtn = e.target.closest("[data-sg-mem-full]");
+    if (editBtn || addBtn) {
+      const list = systemGuide.data ? systemGuide.data.agents : [];
+      const a = list.find((x) => x.id === Number((editBtn || addBtn).dataset[addBtn ? "sgMemAdd" : "sgMemEdit"]));
+      if (a) openAgentMemoryDialog(a, addBtn ? { focusAdd: true } : {});
+      return;
+    }
+    if (moreBtn) {
+      const list = systemGuide.data ? systemGuide.data.agents : [];
+      const a = list.find((x) => x.id === Number(moreBtn.dataset.sgMemFull));
+      if (a) openAgentMemoryDialog(a);
+    }
+  });
+}
+
+function initSystemGuide() {
+  bindSystemGuideTabs();
+  bindSystemGuideActions();
 }
 
 let agentDetailsState = { id: null, mode: "view", panelOpen: false };
@@ -6839,11 +7110,20 @@ function initApp() {
 
   initEditorToolbar();
   initResizeHandles();
+  initSystemGuide();
 
   document.addEventListener("keydown", (e) => {
     if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && ["p", "k"].includes(e.key.toLowerCase())) {
       e.preventDefault();
       openPalette();
+    } else if ((e.ctrlKey || e.metaKey) && !e.altKey && !e.shiftKey && e.key.toLowerCase() === "i") {
+      // Composer: jump to the chat box from anywhere
+      e.preventDefault();
+      const ae = document.activeElement;
+      if (ae && (ae.tagName === "INPUT" || ae.tagName === "TEXTAREA" || ae.isContentEditable)) ae.blur();
+      switchView("chat");
+      const ci = $("#chat-input");
+      if (ci) setTimeout(() => ci.focus(), 60);
     } else if (e.key === "Escape") {
       closeDialog();
       closePalette();
@@ -7274,7 +7554,7 @@ function initApp() {
 
   const initialHash = location.hash;
   const bootSegs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
-  const BOOT_VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"];
+  const BOOT_VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents", "system-guide"];
   const viewerLocked = state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"].includes(bootSegs[0]);
   if (bootSegs.length && BOOT_VIEWS.includes(bootSegs[0]) && !viewerLocked) {
     // Deep-link boot: show the target shell instantly so dashboard never flashes
@@ -7287,7 +7567,7 @@ function initApp() {
     .then(() => {
       const segs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
       const v = segs[0];
-      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"];
+      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents", "system-guide"];
       if (v === "pages") {
         const pid = Number(segs[1]);
         if (segs[1] && state.pages.some((p) => p.id === pid)) showPageDetail(pid);

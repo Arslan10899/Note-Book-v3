@@ -1848,5 +1848,115 @@ class TestMentionRouting(unittest.TestCase):
         self.assertEqual(self._name(app_module._agent_router("@aazaz", actives)), "Aazaz")
 
 
+class TestSystemGuide(BaseTest):
+    """System Guide page + live /api/system/capabilities endpoint."""
+
+    def setUp(self):
+        super().setUp()
+        self.register()
+        self.login()
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.executescript(
+            """
+            DELETE FROM chat_agents;
+            DELETE FROM agent_memory;
+            INSERT INTO chat_agents (name, description, system_prompt, is_active, created_at, icon) VALUES
+            ('Rumman Lashari',
+             'Administrator & Agent Coordinator - poore system ka boss.',
+             'Aap Administrator hain.', 1, '2026-01-01 00:00:00', ''),
+            ('Medical Billing',
+             'Medical Billing specialist - RCM, claims, CPT/ICD.',
+             'Billing rules enforce karo.', 1, '2026-01-01 00:00:00', ''),
+            ('Aazaz',
+             'Executive file-ops assistant, Excel/Word/PDF files banata hai.',
+             'Files banao.', 0, '2026-01-01 00:00:00', '');
+            """
+        )
+        billing_id = conn.execute("SELECT id FROM chat_agents WHERE name = 'Medical Billing'").fetchone()[0]
+        conn.execute(
+            "INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by, created_at, updated_at) "
+            "VALUES (?, 'instruction', 'payer_rule', 'Aetna ke liye prior auth lazmi hai.', 'chat', 'Assistant', '2026-01-02 00:00:00', '2026-01-02 00:00:00')",
+            (billing_id,),
+        )
+        conn.commit()
+        conn.close()
+
+    def _cap(self):
+        return self.client.get("/api/system/capabilities").get_json()
+
+    def test_system_guide_page_returns_spa(self):
+        resp = self.client.get("/system-guide")
+        self.assertEqual(resp.status_code, 200)
+        html = resp.get_data(as_text=True)
+        self.assertIn('id="view-system-guide"', html)
+        self.assertIn("data-sg-tab=\"modules\"", html)
+
+    def test_system_guide_page_public_without_session(self):
+        anon = self.app.test_client()
+        resp = anon.get("/system-guide")
+        self.assertEqual(resp.status_code, 200)
+
+    def test_capabilities_requires_auth(self):
+        anon = self.app.test_client()
+        self.assertEqual(anon.get("/api/system/capabilities").status_code, 401)
+
+    def test_capabilities_shape_and_live_memory(self):
+        conn = sqlite3.connect(app_module.DB_PATH)
+        conn.row_factory = sqlite3.Row
+        rows = conn.execute("SELECT id, name FROM chat_agents ORDER BY id").fetchall()
+        conn.close()
+        rid = next(r["id"] for r in rows if r["name"] == "Rumman Lashari")
+        mid = next(r["id"] for r in rows if r["name"] == "Medical Billing")
+        aid = next(r["id"] for r in rows if r["name"] == "Aazaz")
+        data = self._cap()
+        self.assertEqual(sorted(data["active_ids"]), sorted([rid, mid]))
+        names = {a["name"]: a for a in data["agents"]}
+        self.assertEqual(set(names), {"Rumman Lashari", "Medical Billing", "Aazaz"})
+        billing = names["Medical Billing"]
+        self.assertEqual(billing["id"], mid)
+        self.assertTrue(billing["is_active"])
+        self.assertEqual(len(billing["memory"]), 1)
+        self.assertEqual(billing["memory"][0]["content"], "Aetna ke liye prior auth lazmi hai.")
+        self.assertEqual(names["Aazaz"]["id"], aid)
+        self.assertFalse(names["Aazaz"]["is_active"])
+        self.assertIn("claims", [c["id"] for c in billing["capabilities"]])
+        self.assertIn("file", [c["id"] for c in names["Aazaz"]["capabilities"]])
+        self.assertIn("schedule", [c["id"] for c in names["Rumman Lashari"]["capabilities"]])
+        for c in billing["capabilities"]:
+            self.assertIn("icon", c)
+            self.assertIn("desc", c)
+
+    def test_capabilities_stats(self):
+        self.client.post("/api/tasks", json={"title": "Call insurer", "description": "x", "priority": "high"})
+        data = self._cap()
+        st = data["stats"]
+        self.assertEqual(st["tasks"], 1)
+        self.assertEqual(st["agents"], 3)
+        self.assertEqual(st["agents_active"], 2)
+        self.assertEqual(st["memory_rows"], 1)
+        self.assertEqual(st["notes"], 0)
+        self.assertIsInstance(st["agent_enabled"], bool)
+        self.assertIsInstance(st["review_enabled"], bool)
+        self.assertIn("provider_label", st)
+
+    def test_capability_assignment_pure(self):
+        base = {"name": "Med Billing", "description": "RCM claims specialist", "system_prompt": ""}
+        caps = app_module._agent_capabilities(base, has_api_tools=True)
+        ids = [c["id"] for c in caps]
+        self.assertIn("rag", ids)
+        self.assertIn("sql", ids)
+        self.assertIn("memory", ids)
+        self.assertIn("actions", ids)
+        self.assertIn("portal", ids)
+        self.assertIn("claims", ids)
+
+    def test_capability_assignment_skips_absent_roles(self):
+        plain = {"name": "Adnan", "description": "VDL Data Entry Dep Head", "system_prompt": ""}
+        ids = [c["id"] for c in app_module._agent_capabilities(plain, has_api_tools=False)]
+        self.assertNotIn("file", ids)
+        self.assertNotIn("claims", ids)
+        self.assertIn("actions", ids)
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)
