@@ -1758,5 +1758,58 @@ class TestChatAttachments(BaseTest):
             os.environ.pop("GEMINI_API_KEY", None)
 
 
+class TestMentionRouting(unittest.TestCase):
+    """@AgentName mention overrides every routing rule and strips the tag."""
+
+    def _actives(self):
+        return [
+            {"id": 1, "name": "Rumman Lashari", "icon": "", "description": "Administrator & Agent Coordinator - poore system ka boss.", "system_prompt": ""},
+            {"id": 2, "name": "Medical Billing", "icon": "", "description": "Medical Billing specialist - RCM.", "system_prompt": ""},
+            {"id": 3, "name": "Adnan Gul", "icon": "", "description": "VDL Data Entry Dep Head.", "system_prompt": ""},
+        ]
+
+    def _route(self, q):
+        return app_module._agent_router(q, self._actives())
+
+    def _name(self, agent):
+        return agent["name"] if agent else None
+
+    def test_mention_forces_agent_over_domain(self):
+        # "CPT" normally routes to the billing expert, but the @mention wins.
+        self.assertEqual(self._name(self._route("@Adnan CPT 99213 ka code batao")), "Adnan Gul")
+
+    def test_mention_forces_agent_over_named_manager(self):
+        self.assertEqual(self._name(self._route("@Rumman pending tasks kya hain")), "Rumman Lashari")
+
+    def test_mention_strips_tag_keeps_rest(self):
+        agent, q = app_module._mention_target("@Adnan Gul data entry kaise karein", self._actives())
+        self.assertEqual(agent["name"], "Adnan Gul")
+        self.assertEqual(q, "data entry kaise karein")
+
+    def test_mention_exact_token_keeps_rest(self):
+        agent, q = app_module._mention_target("@Medical Billing claim deny kyun hua", self._actives())
+        self.assertEqual(agent["name"], "Medical Billing")
+        self.assertEqual(q, "claim deny kyun hua")
+
+    def test_mention_not_at_start_untouched(self):
+        agent, q = app_module._mention_target("kya hal hai @Adnan", self._actives())
+        self.assertIsNone(agent)
+        self.assertEqual(q, "kya hal hai @Adnan")
+
+    def test_unknown_mention_untouched(self):
+        agent, q = app_module._mention_target("@Doctor mera bp check karo", self._actives())
+        self.assertIsNone(agent)
+        self.assertEqual(q, "@Doctor mera bp check karo")
+
+    def test_bare_mention_routes_and_strips(self):
+        actives = self._actives() + [
+            {"id": 9, "name": "Aazaz", "icon": "", "description": "Executive file-ops assistant.", "system_prompt": ""}
+        ]
+        agent, q = app_module._mention_target("@aazaz", actives)
+        self.assertEqual(agent["name"], "Aazaz")
+        self.assertEqual(q, "Aazaz")
+        self.assertEqual(self._name(app_module._agent_router("@aazaz", actives)), "Aazaz")
+
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

@@ -4126,6 +4126,16 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
     one of 'answer', 'ask', 'action', 'error'. Pending partial actions are stored
     per chat session so the agent can ask for missing details and finish later.
     """
+    # @AgentName mention forces the named agent to answer this message; the tag
+    # is stripped from `question` so the LLM only ever sees the real request,
+    # while `forced_replying` keeps every internal router resolution pinned.
+    forced_replying = None
+    _active_rows = _active_agents()
+    if _active_rows:
+        _mention_agent, _clean_q = _mention_target(question, _active_rows)
+        if _mention_agent is not None:
+            forced_replying = _mention_agent
+            question = _clean_q
     if not _agent_mode_enabled():
         text, source = hybrid_answer(question, user_name, first_message, sid=sid, attachments=attachments)
         return text, source, "answer"
@@ -4133,7 +4143,7 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
     if not _provider_key(provider):
         plan = _data_status_plan(question) or _action_followup_plan(question)
         if plan:
-            replying = _agent_router(question, _active_agents(), sid=sid)
+            replying = forced_replying or _agent_router(question, _active_agents(), sid=sid)
             _clear_pending(sid)
             try:
                 text = _run_agent_action(plan, question, agent_name=(replying.get("name") or "") if replying else "")
@@ -4143,12 +4153,12 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
                     text = _sql_refusal_fallback(question, replying, user_name)
                     return _append_answer_footer(text, replying, "local_rag"), "local_rag", "answer"
                 return f"I couldn't do that: {e}", "error", "error"
-        replying = _agent_router(question, _active_agents(), sid=sid)
+        replying = forced_replying or _agent_router(question, _active_agents(), sid=sid)
         text, source = hybrid_answer(question, user_name, first_message, sid=sid, agent=replying, attachments=attachments)
         return _append_answer_footer(text, replying, source), source, "answer"
 
     if agent_prompt is None:
-        replying = _agent_router(question, _active_agents(), sid=sid)
+        replying = forced_replying or _agent_router(question, _active_agents(), sid=sid)
         agent_prompt = _agent_prompt_with_memory(replying)
     else:
         replying = _active_agent()
@@ -4851,10 +4861,55 @@ def _last_reply_agent(sid, actives):
     return None
 
 
+def _mention_target(question, actives):
+    """Resolve a leading @AgentName mention to an active agent.
+
+    A chat message that starts with @Name overrides every routing rule: the
+    named agent answers (their chip shows) and the @tag is stripped so the LLM
+    only sees the real question. Exact-name matches win; multi-word names are
+    matched by full prefix so the frontend's completed tag (e.g. "@Medical
+    Billing") strips cleanly. Returns (agent|None, cleaned_question); the
+    question is returned unchanged when no mention resolves."""
+    if not actives or not question:
+        return None, question
+    q = question.strip()
+    if not q.startswith("@"):
+        return None, question
+    body = q[1:]
+    if not body:
+        return None, question
+    raw_token = body.split(None, 1)[0]
+    token = raw_token.rstrip(",.:;!?")
+    rest = body[len(raw_token):].strip()
+    if not token:
+        return None, question
+    tl = token.lower()
+    for a in actives:
+        if (a.get("name") or "").strip().lower() == tl:
+            return a, rest or (a.get("name") or raw_token).strip()
+    # Multi-word names ("Medical Billing"): the completed @tag is the agent's
+    # full name — match it as a word-boundary prefix and strip it whole.
+    matched = None
+    for a in actives:
+        name = (a.get("name") or "").strip()
+        if not name:
+            continue
+        if body.startswith(name) and (len(body) == len(name) or body[len(name)] in " \t\n,.;:!?"):
+            if matched is not None:
+                return None, question  # ambiguous — leave the text alone
+            matched = a
+    if matched is not None:
+        name = (matched.get("name") or "").strip()
+        after = body[len(name):].strip()
+        return matched, after or name
+    return None, question
+
+
 def _agent_router(question, actives, sid=None):
     """Pick the best-fit ACTIVE agent for a question.
 
     Priority:
+    0. Explicit @AgentName mention at the very start of the message.
     1. Explicitly-named STAFF expert (never steal their domain work).
     2. Staff-domain topic -> its domain expert (billing/data-entry/calling/ERN/processing).
     3. App-data management words -> the Administrator (Rumman) — breaks the lock.
@@ -4865,6 +4920,9 @@ def _agent_router(question, actives, sid=None):
     """
     if not actives:
         return None
+    forced, _ = _mention_target(question, actives)
+    if forced is not None:
+        return forced
     if len(actives) == 1:
         return actives[0]
     targeted = _dispatcher_target(question, actives)
@@ -5013,7 +5071,18 @@ def _chat_flow_events(sid, question, user_msg, user_name=None, first_message=Fal
     agent_on = _agent_mode_enabled()
     # Resolve the replying agent EARLY so RAG is scoped correctly: the Manager
     # only ever sees dashboard data, and domain topics route to staff experts.
-    replying = _agent_router(question, _active_agents(), sid=sid) if agent_on else None
+    # A leading @AgentName mention pins the responder AND strips the tag from
+    # search/greeting/LLM input while agent_answer still gets the raw question
+    # so it can re-pin the same agent internally.
+    actives = _active_agents()
+    mention_agent, clean_q = _mention_target(question, actives)
+    question_raw = question
+    if mention_agent is not None:
+        question = clean_q
+    if agent_on:
+        replying = mention_agent if mention_agent is not None else _agent_router(question_raw, actives, sid=sid)
+    else:
+        replying = None
 
     terms = _query_terms(question)
     best = []
@@ -5085,7 +5154,7 @@ def _chat_flow_events(sid, question, user_msg, user_name=None, first_message=Fal
                 "note": "Actions Agent \u2014 deciding\u2026",
             }
             try:
-                answer, source, outcome = agent_answer(sid, question, user_name, first_message, portals=portals, attachments=attachments)
+                answer, source, outcome = agent_answer(sid, question_raw, user_name, first_message, portals=portals, attachments=attachments)
             except Exception as e:
                 logger.warning("agent/cloud answer failed: %s", e)
                 if best:

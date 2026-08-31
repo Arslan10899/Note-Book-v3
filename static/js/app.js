@@ -4250,6 +4250,7 @@ function renderChatMessages() {
 
 function chatSetBusy(busy) {
   chatBusy = busy;
+  if (busy) mentionHide();
   const send = $("#chat-send-btn");
   const input = $("#chat-input");
   if (send) send.disabled = busy;
@@ -4388,6 +4389,7 @@ async function chatAttachFiles(files) {
 
 async function chatSend() {
   if (chatBusy || chatAttaching) return;
+  mentionHide();
   const input = $("#chat-input");
   const text = (input ? input.value : "").trim();
   if (!text && chatAttachments.length === 0) return;
@@ -4500,6 +4502,12 @@ function initChat() {
   const input = $("#chat-input");
   if (input) {
     input.addEventListener("keydown", (e) => {
+      if (mentionOpen && mentionList.length) {
+        if (e.key === "ArrowDown") { e.preventDefault(); mentionMove(1); return; }
+        if (e.key === "ArrowUp") { e.preventDefault(); mentionMove(-1); return; }
+        if (e.key === "Enter" || e.key === "Tab") { e.preventDefault(); mentionComplete(); return; }
+        if (e.key === "Escape") { e.preventDefault(); mentionHide(); return; }
+      }
       if (e.key === "Enter" && !e.shiftKey) {
         e.preventDefault();
         chatSend();
@@ -4508,8 +4516,14 @@ function initChat() {
     input.addEventListener("input", () => {
       input.style.height = "auto";
       input.style.height = Math.min(input.scrollHeight, 160) + "px";
+      mentionTick();
     });
   }
+  document.addEventListener("mousedown", (ev) => {
+    if (!mentionOpen || !ev.target || !ev.target.closest) return;
+    if (ev.target.closest("#chat-mention-pop") || ev.target.closest("#chat-input")) return;
+    mentionHide();
+  });
   const attachBtn = $("#chat-attach-btn");
   const attachInput = $("#chat-attach-input");
   if (attachBtn && attachInput) {
@@ -4575,6 +4589,172 @@ function agentChipHTML(ag, iconOnly) {
     return `<span class="cf-chip cf-chip-ico" title="${name}" style="--chip-h:${agentHue(ag)}">${icon || letter}</span>`;
   }
   return `<span class="cf-chip" style="--chip-h:${agentHue(ag)}">${icon || `<span class="cf-chip-letter">${letter}</span>`}<span>${name}</span></span>`;
+}
+
+// ---- @AgentName mention autocomplete --------------------------------------
+
+const MENTION_MAX_ROWS = 8;
+let mentionPop = null;
+let mentionAgents = [];
+let mentionLoaded = false;
+let mentionList = [];
+let mentionIndex = 0;
+let mentionOpen = false;
+let mentionRange = null;
+
+function mentionPopover() {
+  if (!mentionPop) {
+    mentionPop = document.getElementById("chat-mention-pop");
+    if (!mentionPop) {
+      const form = $("#chat-form");
+      if (!form) return null;
+      const el = document.createElement("div");
+      el.id = "chat-mention-pop";
+      el.className = "hidden";
+      form.appendChild(el);
+      mentionPop = el;
+    }
+  }
+  return mentionPop;
+}
+
+function mentionAvatarHTML(a) {
+  const name = String(a.name || "");
+  const iconName = a.icon || agentDefaultIcon(a);
+  if (agentIconIsRenderable(iconName)) {
+    return `<span class="mention-av" style="--chip-h:${agentHue(a)}">${pageIconHTML(iconName, "")}</span>`;
+  }
+  return `<span class="mention-av mention-av-letter" style="--chip-h:${agentHue(a)}">${escapeHtml(name.charAt(0).toUpperCase())}</span>`;
+}
+
+function mentionRowHTML(a, i) {
+  const name = escapeHtml(String(a.name || ""));
+  const hint = escapeHtml(String(a.description || "").trim().slice(0, 70));
+  const active = i === mentionIndex ? " active" : "";
+  return `<div class="mention-row${active}" data-mention="${i}" role="option" aria-selected="${i === mentionIndex}">
+      ${mentionAvatarHTML(a)}
+      <div class="min-w-0 flex-1">
+        <div class="truncate text-[13px] font-medium">${name}</div>
+        ${hint ? `<div class="mention-role truncate">${hint}</div>` : ""}
+      </div>
+    </div>`;
+}
+
+function mentionTokenAt(input) {
+  const caret = input.selectionStart == null ? input.value.length : input.selectionStart;
+  const before = input.value.slice(0, caret);
+  const at = before.lastIndexOf("@");
+  if (at === -1) return null;
+  if (at > 0 && !/\s/.test(before[at - 1])) return null;
+  return { start: at, end: caret, token: input.value.slice(at + 1, caret) };
+}
+
+function mentionFilter(token) {
+  const t = token.toLowerCase();
+  if (!mentionAgents.length) return [];
+  const list = t
+    ? mentionAgents.filter((a) => {
+        const nm = String(a.name || "").toLowerCase();
+        const ds = String(a.description || "").toLowerCase();
+        return nm.includes(t) || ds.includes(t);
+      })
+    : mentionAgents;
+  return list.slice(0, MENTION_MAX_ROWS);
+}
+
+async function mentionLoad() {
+  if (mentionLoaded) return;
+  try {
+    const res = await api("/api/agents");
+    if (res && Array.isArray(res.agents)) {
+      mentionAgents = res.agents.filter((a) => a && a.is_active && (a.name || "").trim());
+    }
+    mentionLoaded = true;
+  } catch (e) {
+    mentionLoaded = false;
+    toast(e.message, "error");
+  }
+}
+
+async function mentionTick() {
+  const base = mentionPopoverBase();
+  if (!base) return;
+  const { input, pop } = base;
+  const range = mentionTokenAt(input);
+  if (!range) {
+    mentionHide();
+    return;
+  }
+  mentionRange = range;
+  if (!mentionLoaded) await mentionLoad();
+  const list = mentionFilter(range.token);
+  if (!list.length) {
+    mentionHide();
+    return;
+  }
+  if (mentionIndex > list.length - 1) mentionIndex = list.length - 1;
+  mentionList = list;
+  pop.innerHTML = list.map((a, i) => mentionRowHTML(a, i)).join("");
+  pop.querySelectorAll(".mention-row").forEach((row) => {
+    row.addEventListener("mousedown", (ev) => {
+      ev.preventDefault();
+      mentionIndex = Number(row.dataset.mention) || 0;
+      mentionComplete();
+    });
+  });
+  pop.classList.remove("hidden");
+  mentionOpen = true;
+  const row = pop.querySelector(".mention-row.active");
+  if (row) row.scrollIntoView({ block: "nearest" });
+}
+
+function mentionPopoverBase() {
+  const input = $("#chat-input");
+  if (!input) return null;
+  const pop = mentionPopover();
+  if (!pop) return null;
+  return { input, pop };
+}
+
+function mentionHide() {
+  if (!mentionPop) return;
+  mentionPop.classList.add("hidden");
+  mentionPop.innerHTML = "";
+  mentionOpen = false;
+  mentionList = [];
+  mentionIndex = 0;
+  mentionRange = null;
+}
+
+function mentionMove(dir) {
+  if (!mentionList.length) return;
+  mentionIndex = (mentionIndex + dir + mentionList.length) % mentionList.length;
+  const pop = mentionPopover();
+  if (!pop) return;
+  Array.from(pop.querySelectorAll(".mention-row")).forEach((row) => {
+    const active = Number(row.dataset.mention) === mentionIndex;
+    row.classList.toggle("active", active);
+    row.setAttribute("aria-selected", String(active));
+  });
+  const self = pop.querySelector(".mention-row.active");
+  if (self) self.scrollIntoView({ block: "nearest" });
+}
+
+function mentionComplete() {
+  const base = mentionPopoverBase();
+  if (!base || !mentionList.length || !mentionRange) return;
+  const { input } = base;
+  const agent = mentionList[mentionIndex] || mentionList[0];
+  const name = String(agent.name || "").trim();
+  const start = mentionRange.start;
+  const caret = input.selectionStart == null ? input.value.length : input.selectionStart;
+  const after = input.value.slice(caret);
+  input.value = input.value.slice(0, start) + "@" + name + " " + after;
+  const next = start + 1 + name.length + 1;
+  input.setSelectionRange(next, next);
+  input.style.height = "auto";
+  input.style.height = Math.min(input.scrollHeight, 160) + "px";
+  mentionHide();
 }
 
 function chatSubtitleText(names, enabled) {
@@ -4696,6 +4876,8 @@ function refreshAgentsSilently() {
       agentsState.agents = res.agents;
       agentsState.active_ids = res.active_ids || [];
       if (res.active_id != null) agentsState.active_id = res.active_id;
+      mentionAgents = res.agents.filter((a) => a && a.is_active && (a.name || "").trim());
+      mentionLoaded = true;
       renderAgents();
     })
     .catch(() => {});
