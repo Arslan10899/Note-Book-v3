@@ -7287,8 +7287,18 @@ def delete_routine(routine_id):
     return jsonify({"ok": True})
 
 
-BACKUP_TABLES = ["tasks", "notes", "routines", "routine_completions", "note_versions", "pages", "note_shares"]
-# Curated/chat tables are reset too (kept out of JSON/Excel backups for now)
+# User content + agent-flow state that travels with JSON/Excel backups. The
+# agent tables are here so re-importing a JSON/Excel backup restores the whole
+# assistant (agents, their memory, enabled API tools, and app settings), not
+# just notes/tasks/pages/routines.
+BACKUP_TABLES = [
+    "tasks", "notes", "routines", "routine_completions", "note_versions",
+    "pages", "note_shares", "chat_agents", "agent_memory", "api_tools", "app_settings",
+]
+# Curated/chat tables are reset too, but kept OUT of JSON/Excel backups (for now):
+# chat history and per-user auth stay local; live API keys, users, and derived
+# embedding caches are excluded from wire-format backups on purpose — use a
+# .sqlite snapshot for a byte-perfect copy of everything.
 NON_BACKUP_TABLES = ["chat_messages", "chat_sessions", "knowledge_base", "chat_settings", "agent_audit"]
 
 
@@ -7560,6 +7570,78 @@ def import_backup():
                 count("note_shares", "imported")
             except sqlite3.IntegrityError:
                 count("note_shares", "skipped")
+        # Agent-flow tables: agents themselves, then their memories (FK remap),
+        # then the API tools they can use, then app settings.
+        agent_id_map = {}
+        for row in data.get("chat_agents", []):
+            name = str(row.get("name") or "").strip()
+            if not name:
+                continue
+            if mode == "merge":
+                dup = conn.execute("SELECT id FROM chat_agents WHERE lower(name)=lower(?)", (name,)).fetchone()
+                if dup:
+                    agent_id_map[_as_int(row.get("id"))] = dup["id"]
+                    count("chat_agents", "skipped")
+                    continue
+            cur = conn.execute(
+                "INSERT INTO chat_agents (name, description, system_prompt, icon, is_active, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (name, str(row.get("description") or ""), str(row.get("system_prompt") or ""),
+                 str(row.get("icon") or "")[:24], _as_bool(row.get("is_active", 0)),
+                 str(row.get("created_at") or now_stamp())),
+            )
+            agent_id_map[_as_int(row.get("id"))] = cur.lastrowid
+            count("chat_agents", "imported")
+        for row in data.get("agent_memory", []):
+            new_aid = agent_id_map.get(_as_int(row.get("agent_id")))
+            mem_key = str(row.get("key") or "").strip()
+            content = str(row.get("content") or "").strip()
+            if new_aid is None or not content:
+                count("agent_memory", "skipped")
+                continue
+            if mode == "merge":
+                dup = conn.execute(
+                    "SELECT 1 FROM agent_memory WHERE agent_id=? AND key=? AND content=?",
+                    (new_aid, mem_key, content),
+                ).fetchone()
+                if dup:
+                    count("agent_memory", "skipped")
+                    continue
+            conn.execute(
+                "INSERT INTO agent_memory (agent_id, kind, key, content, source, created_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (new_aid, str(row.get("kind") or "fact"), mem_key, content,
+                 str(row.get("source") or "manual"), str(row.get("created_by") or ""),
+                 str(row.get("created_at") or now_stamp()), str(row.get("updated_at") or now_stamp())),
+            )
+            count("agent_memory", "imported")
+        for row in data.get("api_tools", []):
+            name = str(row.get("name") or "").strip()
+            url_template = str(row.get("url_template") or "").strip()
+            if not name or not url_template:
+                count("api_tools", "skipped")
+                continue
+            if mode == "merge":
+                dup = conn.execute("SELECT 1 FROM api_tools WHERE url_template=?", (url_template,)).fetchone()
+                if dup:
+                    count("api_tools", "skipped")
+                    continue
+            conn.execute(
+                "INSERT INTO api_tools (name, url_template, method, enabled, description, created_at) "
+                "VALUES (?, ?, ?, ?, ?, ?)",
+                (name, url_template, str(row.get("method") or "GET"), _as_bool(row.get("enabled", 1)),
+                 str(row.get("description") or ""), str(row.get("created_at") or now_stamp())),
+            )
+            count("api_tools", "imported")
+        for row in data.get("app_settings", []):
+            key = str(row.get("key") or "").strip()
+            if not key:
+                continue
+            conn.execute(
+                "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
+                (key, str(row.get("value") or ""), str(row.get("updated_at") or now_stamp())),
+            )
+            count("app_settings", "imported")
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -7580,6 +7662,10 @@ TABLE_COLS = {
     "tasks": ["id", "title", "description", "priority", "due_date", "done", "completed_at", "created_at", "page_id"],
     "pages": ["id", "title", "icon", "content", "created_at", "updated_at"],
     "routines": ["id", "title", "weekday", "time", "active", "created_at"],
+    "chat_agents": ["id", "name", "description", "system_prompt", "icon", "is_active", "created_at"],
+    "agent_memory": ["id", "agent_id", "kind", "key", "content", "source", "created_by", "created_at", "updated_at"],
+    "api_tools": ["id", "name", "url_template", "method", "enabled", "description", "created_at"],
+    "app_settings": ["key", "value", "updated_at"],
 }
 
 
@@ -7757,6 +7843,102 @@ def import_excel():
                 conn.execute(
                     f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({ph})", vals
                 )
+                count(table, "imported")
+        # Agent-flow sheets: agents, their memories, tools, and app settings.
+        agent_id_map = {}
+        for table in ["chat_agents", "agent_memory", "api_tools", "app_settings"]:
+            if table not in sheets:
+                continue
+            rows = list(wb[table].iter_rows(values_only=True))
+            if len(rows) < 2:
+                continue
+            headers = [str(h).strip() if h is not None else "" for h in rows[0]]
+            for r in rows[1:]:
+                if all(v is None or str(v).strip() == "" for v in r):
+                    continue
+                rec = {headers[i]: r[i] for i in range(min(len(headers), len(r))) if headers[i]}
+                cols = []
+                vals = []
+                for col in TABLE_COLS[table]:
+                    raw_v = rec.get(col)
+                    if table == "app_settings":
+                        if col == "key":
+                            k = str(raw_v or "").strip()
+                            if not k:
+                                break
+                            cols.append(col)
+                            vals.append(k)
+                        else:
+                            cols.append(col)
+                            vals.append(str(raw_v or ""))
+                        continue
+                    if col == "id":
+                        try:
+                            v = int(float(raw_v))
+                        except (TypeError, ValueError):
+                            continue
+                        if v > 0:
+                            cols.append("id")
+                            vals.append(v)
+                    elif col == "agent_id":
+                        try:
+                            vals.append(agent_id_map.get(int(float(raw_v))) if raw_v is not None else None)
+                        except (TypeError, ValueError, KeyError):
+                            vals.append(None)
+                        cols.append(col)
+                    elif col in ("is_active", "enabled"):
+                        cols.append(col)
+                        vals.append(_as_bool(raw_v))
+                    elif col == "icon":
+                        cols.append(col)
+                        vals.append(str(raw_v or "")[:24])
+                    else:
+                        cols.append(col)
+                        vals.append(str(raw_v if raw_v is not None else ""))
+                if table == "agent_memory":
+                    new_aid = None
+                    for i, c in enumerate(cols):
+                        if c == "agent_id":
+                            new_aid = vals[i]
+                    if new_aid is None:
+                        count(table, "skipped")
+                        continue
+                if table == "chat_agents":
+                    name = str(rec.get("name") or "").strip()
+                    if not name:
+                        count(table, "skipped")
+                        continue
+                if mode == "merge":
+                    dup = False
+                    if table == "chat_agents":
+                        nm = str(rec.get("name") or "").strip()
+                        dup = conn.execute("SELECT 1 FROM chat_agents WHERE lower(name)=lower(?)", (nm,)).fetchone()
+                    elif table == "agent_memory":
+                        dup = conn.execute(
+                            "SELECT 1 FROM agent_memory WHERE agent_id=? AND key=? AND content=?",
+                            (new_aid, str(rec.get("key") or ""), str(rec.get("content") or "")),
+                        ).fetchone()
+                    elif table == "api_tools":
+                        ct = str(rec.get("url_template") or "").strip()
+                        dup = conn.execute("SELECT 1 FROM api_tools WHERE url_template=?", (ct,)).fetchone()
+                    if dup:
+                        count(table, "skipped")
+                        continue
+                ph = ", ".join("?" for _ in cols)
+                if table == "app_settings":
+                    conn.execute(
+                        f"INSERT OR REPLACE INTO {table} ({', '.join(cols)}) VALUES ({ph})", vals
+                    )
+                    count(table, "imported")
+                    continue
+                cur = conn.execute(
+                    f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({ph})", vals
+                )
+                if table == "chat_agents":
+                    try:
+                        agent_id_map[int(float(rec.get("id")))] = cur.lastrowid
+                    except (TypeError, ValueError):
+                        pass
                 count(table, "imported")
         conn.execute("COMMIT")
     except Exception:

@@ -303,6 +303,98 @@ class TestExport(BaseTest):
         payload = r.get_json()
         self.assertIn("notes", payload["data"])
 
+    def test_json_backup_includes_agent_flow_tables(self):
+        """JSON backup carries agents, their memory, API tools and app settings."""
+        ag = self.client.post(
+            "/api/agents",
+            json={"name": "Medical Billing", "description": "RCM specialist", "system_prompt": "Billing rules."},
+        )
+        self.assertEqual(ag.status_code, 201)
+        agent_id = ag.get_json()["id"]
+        self.client.post(
+            f"/api/agents/{agent_id}/memory",
+            json={"kind": "fact", "key": "policy", "content": "Copay 20%"},
+        )
+        self.client.post(
+            "/api/tools",
+            json={"name": "NPI", "url_template": "https://example.com/{npi}", "method": "GET", "description": "lookup"},
+        )
+        app_module._set_app_setting("review_max_loops", "3")
+
+        payload = self.client.get("/api/export/json").get_json()["data"]
+        self.assertIn("chat_agents", payload)
+        self.assertIn("agent_memory", payload)
+        self.assertIn("api_tools", payload)
+        self.assertIn("app_settings", payload)
+        self.assertTrue(payload["chat_agents"])
+        self.assertTrue(any(m["key"] == "policy" for m in payload["agent_memory"]))
+        self.assertTrue(payload["api_tools"])
+        self.assertTrue(any(s["key"] == "review_max_loops" for s in payload["app_settings"]))
+
+    def test_agent_flow_json_restore_roundtrip(self):
+        """reset + JSON import replants agents, memory, tools and settings."""
+        ag = self.client.post(
+            "/api/agents",
+            json={"name": "Rumman", "description": "Boss", "system_prompt": "Admin."},
+        ).get_json()
+        agent_id = ag["id"]
+        self.client.post(
+            f"/api/agents/{agent_id}/memory",
+            json={"kind": "fact", "key": "office", "content": "9 to 5"},
+        )
+        app_module._set_app_setting("review_enabled", "1")
+        backup = self.client.get("/api/export/json").get_json()
+
+        self.client.post("/api/reset")
+        st = self.client.post(
+            "/api/import",
+            data={"file": (io.BytesIO(json.dumps(backup).encode("utf-8")), "b.json"), "mode": "replace"},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(st.status_code, 200)
+
+        agents = self.client.get("/api/agents").get_json()["agents"]
+        self.assertTrue(any(a["name"] == "Rumman" for a in agents))
+        restored = [a for a in agents if a["name"] == "Rumman"][0]
+        mem = restored["memory"]
+        self.assertTrue(any(m["key"] == "office" and "9 to 5" in m["content"] for m in mem))
+        self.assertEqual(app_module._app_setting("review_enabled"), "1")
+
+    def test_excel_export_includes_agent_sheets(self):
+        self.client.post(
+            "/api/agents",
+            json={"name": "Med", "description": "d", "system_prompt": "p"},
+        )
+        r = self.client.get("/api/export/excel")
+        self.assertEqual(r.status_code, 200)
+        from openpyxl import load_workbook
+        wb = load_workbook(io.BytesIO(r.data), read_only=True)
+        self.assertIn("chat_agents", wb.sheetnames)
+        self.assertIn("agent_memory", wb.sheetnames)
+
+    def test_excel_agent_roundtrip(self):
+        """export Excel -> reset -> import Excel replants agent + its memory."""
+        aid = self.client.post(
+            "/api/agents", json={"name": "Med", "description": "d", "system_prompt": "p"}
+        ).get_json()["id"]
+        self.client.post(
+            f"/api/agents/{aid}/memory",
+            json={"kind": "fact", "key": "policy", "content": "Copay 20%"},
+        )
+        xls = self.client.get("/api/export/excel").data
+
+        self.client.post("/api/reset")
+        r = self.client.post(
+            "/api/import/excel",
+            data={"file": (io.BytesIO(xls), "b.xlsx"), "mode": "replace"},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(r.status_code, 200)
+        agents = self.client.get("/api/agents").get_json()["agents"]
+        restored = [a for a in agents if a["name"] == "Med"]
+        self.assertEqual(len(restored), 1)
+        self.assertTrue(any(m["key"] == "policy" and "Copay 20%" in m["content"] for m in restored[0]["memory"]))
+
 
 class TestDotEnv(BaseTest):
     def test_env_file_loaded(self):
