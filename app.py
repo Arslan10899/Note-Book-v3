@@ -1892,6 +1892,32 @@ def _extract_json(text):
     raise ValueError("Unbalanced JSON in model output")
 
 
+_RAG_SYNTHESIS_RULES = (
+    "STRICT KNOWLEDGE-ANSWER RULES (apply to EVERY answer based on the saved notes/KB below):\n"
+    "1. SMART SYNTHESIS — NEVER dump, echo, or copy-paste any retrieved note/knowledge text "
+    "word-for-word. Read the context, mentally filter out everything unrelated to the exact "
+    "question, then write your OWN concise, professional, well-organized answer. If a saved "
+    "note is long, condense it to only the parts that answer the question.\n"
+    "2. RELEVANCE FILTER — Ignore headers, timestamps, version history, and tangential or "
+    "unrelated paragraphs that appear inside a retrieved note. Answer ONLY from the relevant "
+    "parts; never surface noise that has nothing to do with the question.\n"
+    "3. STANDARD OUTPUT STRUCTURE for any knowledge/note-based answer:\n"
+    "   a) DIRECT ANSWER at the top — a sharp, direct, actionable answer to exactly what was "
+    "      asked, in 2-4 concise bullet points or short sentences.\n"
+    "   b) EXPLANATION & CONTEXT below — ONLY if there is genuinely useful background, policy "
+    "      reasoning, or billing-guideline nuance, add a clean separate section under the "
+    "      heading `### 💡 Explanation & Billing Context:` with a short synthesized "
+    "      explanation of the rule, why it applies, and any relevant caveats. Skip this "
+    "      section entirely when the direct answer already covers everything.\n"
+    "   c) SOURCE REFERENCE — close with one discreet footer line in the format "
+    "      `📌 Source: <Type> <Title>` (e.g. \"📌 Source: Note #12 — BCBS Modifier Rules\"). "
+    "      Never paste the full document text after it.\n"
+    "Keep every code (CPT/ICD), date, figure and rule exactly as written — never change or "
+    "invent them. Write the answer in the same language the user writes in (Urdu / Roman "
+    "Urdu / English), keeping the tone professional and conversational."
+)
+
+
 def _gemini_reply(provider, question, context, local=None, user_name=None, first_message=False, agent_prompt="", portals=None, history=None, attachments=None):
     sys_guide = (
         "You are a helpful, professional AI assistant — like ChatGPT or Gemini used in a "
@@ -1943,9 +1969,9 @@ def _gemini_reply(provider, question, context, local=None, user_name=None, first
         sys_guide += (
             "\n\nAUTHORITATIVE content from the user's own app (notes, tasks, guidelines, pages, routines):\n"
             + context
-            + "\n\nWhen the question is about the user's app data, answer FROM this content and keep every "
-            "code (CPT/ICD), date, figure and rule exactly as written — never change or invent them. "
-            "For questions unrelated to this content you may answer from general knowledge."
+            + "\n\n"
+            + _RAG_SYNTHESIS_RULES
+            + "\nFor questions completely unrelated to this content you may answer from general knowledge."
         )
     if history:
         turns = "\n".join(_history_turn_txt(h) for h in history)

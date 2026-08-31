@@ -1322,6 +1322,43 @@ class TestToolRenderingAndPersona(BaseTest):
         finally:
             os.environ.pop("GEMINI_API_KEY", None)
 
+    def test_gemini_reply_rag_synthesis_rules(self):
+        # Knowledge/note answers must synthesize — never echo the raw note —
+        # and follow the direct-answer -> context -> source footer structure.
+        os.environ["GEMINI_API_KEY"] = "AIza-test"
+        ctx = "**Note: BCBS Modifier Rules** (rcm):\nFull raw note with unrelated header junk..."
+        try:
+            with mock.patch.object(app_module, "_llm_prompt", return_value="ok") as m:
+                app_module._gemini_reply("gemini", "modifier 25 kab use hota hai?", ctx)
+            sys_txt = m.call_args[0][1]
+            self.assertIn("STRICT KNOWLEDGE-ANSWER RULES", sys_txt)
+            self.assertIn("NEVER dump, echo, or copy-paste", sys_txt)
+            self.assertIn("RELEVANCE FILTER", sys_txt)
+            self.assertIn("DIRECT ANSWER", sys_txt)
+            self.assertIn("### 💡 Explanation & Billing Context:", sys_txt)
+            self.assertIn("📌 Source:", sys_txt)
+            self.assertIn("BCBS Modifier Rules", sys_txt)  # context is still supplied
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+
+    def test_agent_reply_gets_rag_synthesis_rules(self):
+        # Custom agents adopt the same clean knowledge-answer style.
+        os.environ["GEMINI_API_KEY"] = "AIza-test"
+        ctx = "**Guideline: Appeal Timing** (billing):\nPolicy text..."
+        try:
+            with mock.patch.object(app_module, "_llm_prompt", return_value="ok") as m:
+                app_module._gemini_reply(
+                    "gemini", "appeal kitne din mein karni chahiye?", ctx,
+                    agent_prompt="Aap Medical Billing specialist hain.",
+                )
+            sys_txt = m.call_args[0][1]
+            self.assertIn("AGENT INSTRUCTIONS", sys_txt)
+            self.assertIn("SMART SYNTHESIS", sys_txt)
+            self.assertIn("📌 Source:", sys_txt)
+            self.assertIn("DIRECT ANSWER", sys_txt)
+        finally:
+            os.environ.pop("GEMINI_API_KEY", None)
+
     def test_history_turn_strips_footer_token(self):
         out = app_module._history_turn_txt({"sender": "assistant", "message": "jawab\n\n__agentby__Rumman Lashari__🔵__Admin"})
         self.assertIn("jawab", out)
