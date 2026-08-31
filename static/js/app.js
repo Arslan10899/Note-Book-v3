@@ -4580,8 +4580,12 @@ function agentChipHTML(ag, iconOnly) {
 function chatSubtitleText(names, enabled) {
   if (chatLive) return `<span class="text-emerald-600 dark:text-emerald-400 font-medium">Live Chat with AI \u2014 general AI, no medical-billing restriction</span>`;
   const ready = (names && names.length) ? names : null;
-  if (ready && enabled) return `Agents ready to respond: ${ready.map(agentChipHTML).join("")}`;
-  if (ready) return `Agents ready: ${ready.map(agentChipHTML).join("")} \u2014 enable Agent to use them`;
+  // Map with an explicit arrow: bare .map(agentChipHTML) leaks the array index
+  // as iconOnly (index 0 -> full chip, rest -> icon-only), making the first
+  // agent look different. All chips render the same icon avatar.
+  const chips = ready ? ready.map((x) => agentChipHTML(x, true)).join("") : "";
+  if (ready && enabled) return `Agents ready to respond: ${chips}`;
+  if (ready) return `Agents ready: ${chips} \u2014 enable Agent to use them`;
   return "Answers from your notes, pages & guidelines";
 }
 
