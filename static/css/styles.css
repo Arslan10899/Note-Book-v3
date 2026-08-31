@@ -2169,6 +2169,11 @@ html, body { overflow-x: clip; }
   border-radius: 0.75rem;
   background: hsl(var(--card));
 }
+.sg-mod.sg-click { cursor: pointer; transition: border-color 0.15s ease, background-color 0.15s ease; }
+.sg-mod.sg-click:hover { border-color: hsl(var(--ring)); background: hsl(var(--muted) / 0.35); }
+.sg-mod.sg-click:focus-visible { outline: 2px solid hsl(var(--ring)); outline-offset: 1px; }
+.sg-mod-hint { margin-top: 0.375rem; font-size: 0.6875rem; font-weight: 600; color: hsl(var(--primary)); }
+.dark .sg-mod-hint { color: hsl(var(--primary)); }
 .sg-mod-ico {
   display: flex; align-items: center; justify-content: center;
   width: 2.5rem; height: 2.5rem; flex-shrink: 0;
@@ -2276,6 +2281,44 @@ html, body { overflow-x: clip; }
   cursor: pointer;
 }
 .sg-mem-more:hover { text-decoration: underline; }
+
+.sg-dstats { display: flex; flex-wrap: wrap; gap: 0.5rem; }
+.sg-dstat {
+  min-width: 7rem;
+  padding: 0.625rem 0.75rem;
+  border: 1px solid hsl(var(--border));
+  border-radius: 0.625rem;
+  background: hsl(var(--card));
+}
+.sg-dstat-val {
+  display: block;
+  font-size: 1.125rem;
+  font-weight: 700;
+  line-height: 1.2;
+}
+.sg-dstat-lab { font-size: 0.6875rem; color: hsl(var(--muted-foreground)); }
+
+.sg-list { display: grid; gap: 0.5rem; }
+.sg-list li {
+  position: relative;
+  padding-left: 1.125rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: hsl(var(--foreground) / 0.85);
+}
+.sg-list li::before {
+  content: "\2713";
+  position: absolute;
+  left: 0;
+  top: 0;
+  font-size: 0.75rem;
+  color: hsl(152 76% 40%);
+  font-weight: 700;
+}
+.dark .sg-list li::before { color: hsl(152 69% 60%); }
+.sg-list-num { counter-reset: sgi; }
+.sg-list-num li { counter-increment: sgi; }
+.sg-list-num li::before { content: counter(sgi) "."; left: 0; }
 
 .sg-flow {
   display: flex;

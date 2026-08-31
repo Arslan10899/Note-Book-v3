@@ -5075,24 +5075,91 @@ let systemGuide = { data: null, loaded: false, tab: "modules" };
 
 const SG_MODULES = [
   {
+    id: "notes",
     icon: "\ud83d\udce1", title: "Notes & Knowledge Base", desc: "Markdown editor, version history, RAG semantic search over notes, pages & guidelines",
-    main: "notes", label: "notes", countKey: "notes", count: (s) => s.notes + s.knowledge,
+    main: "notes", count: (s) => s.notes + s.knowledge,
     tag: "Markdown \u00b7 RAG \u00b7 Ctrl+P",
+    feats: [
+      "Markdown editor — formatting toolbar, inline tables & images",
+      "Ctrl+F Find & Replace editor ke andar",
+      "Version history — kisi bhi purani note ko restore karein",
+      "Semantic RAG — Chat mein sawal poochhein, notes/pages/KB se synthesized answer + source",
+      "Share links — public share page (s/<slug>) se baahar bhi bhejein",
+    ],
+    data: [
+      { label: "Notes", key: "notes" },
+      { label: "Knowledge Base entries", key: "knowledge" },
+      { label: "Note versions", key: "notes_versions" },
+    ],
+    howto: [
+      "Notes \u2192 nayi note banayein; Ctrl+P se kisi bhi note tak foran jaien",
+      "Pages bana kar notes ko chapters/categories mein organise karein",
+      "Knowledge Base mein guidelines & rules add karein — Chat unhein answer ke liye use karta hai",
+      "Chat mein bataein \"notes mein x dhoondo\" ya @agent ko mention karein",
+    ],
   },
   {
+    id: "tasks",
     icon: "\ud83d\udccb", title: "Tasks & Schedules", desc: "Task collections, due dates aur routines — agent inhe likh / update bhi kar sakta hai",
-    main: "tasks", label: "task list", countKey: "tasks", count: (s) => s.tasks + s.routines,
+    main: "tasks", count: (s) => s.tasks + s.routines,
     tag: "tasks \u00b7 routines \u00b7 due dates",
+    feats: [
+      "Multiple task collections (offices/departments ke hisaab se)",
+      "Priorities, due dates aur done/undone marking",
+      "Routines — roz ka kaam template se tick hota hai",
+      "Har task collection export/download (Excel) available",
+    ],
+    data: [
+      { label: "Tasks", key: "tasks" },
+      { label: "Routines", key: "routines" },
+    ],
+    howto: [
+      "Tasks page par nayi task collection banayein aur priority set karein",
+      "Schedule page par routines add karein — roz tick karein",
+      "Chat mein agent se \"kal ke tasks batao\" ya \"ye task add karo\" kahein",
+    ],
   },
   {
+    id: "portals",
     icon: "\ud83d\uddd3", title: "Calendar & Web Portals", desc: "Calendar views, events aur external portals — daily work ka central board",
-    main: "webportals", label: "links", countKey: "api_tools", count: (s) => s.pages + s.api_tools,
+    main: "webportals", count: (s) => s.pages + s.api_tools,
     tag: "calendar \u00b7 portals \u00b7 pages",
+    feats: [
+      "Calendar — monthly view, events & holidays",
+      "Web portals — Google Sheets / websites ke foran links",
+      "Pages — baqi teams / directors ke liye published pages",
+      "API tools — portals/APIs ko Chat agent bhi fetch kar sakta hai",
+    ],
+    data: [
+      { label: "Pages", key: "pages" },
+      { label: "Portal / API tools", key: "api_tools" },
+    ],
+    howto: [
+      "Web portals mein apne daily sites (sheets/dashboards) add karein",
+      "Calendar mein events mark karein; holidays apne aap dikhte hain",
+      "Chat mein agent se \"portal khol ke data nikaalo\" kahein (agar API tool configure ho)",
+    ],
   },
   {
+    id: "backups",
     icon: "\ud83d\udcbe", title: "Backups & Downloads", desc: "In-memory SQLite / Excel / JSON exports, tasks & pages ki xlsx files — bilkul portable",
-    main: "dashboard", label: "formats", countKey: "export_capable", count: (s) => (s.export_capable ? 3 : 0),
+    main: "dashboard", count: (s) => (s.export_capable ? 3 : 0),
     tag: "JSON \u00b7 Excel \u00b7 SQLite",
+    feats: [
+      "Full backup — JSON / Excel / SQLite, sab kuch ek file mein",
+      "Per-task aur per-page Excel (.xlsx) downloads",
+      "Browser-local web portals backup ke saath save/restore hote hain",
+      "Uploads folder se attachments wapas milte hain",
+    ],
+    data: [
+      { label: "Backup formats", key: "export_capable" },
+      { label: "Chat sessions", key: "chat_sessions" },
+    ],
+    howto: [
+      "Settings \u2192 Backups mein export karein (JSON/Excel/SQLite) aur file mehfooz rakhein",
+      "Har hafte backup lene ki aadat banayein; DB ke saath -wal file bhi copy karein",
+      "Import feature se wohi file wapas load hoti hai (portals bhi browser mein restore)",
+    ],
   },
 ];
 
@@ -5163,7 +5230,7 @@ function renderSGModules(s) {
   const grid = $("#sg-modules-grid");
   if (!grid) return;
   grid.innerHTML = SG_MODULES.map((m) => `
-    <div class="sg-mod">
+    <div class="sg-mod sg-click" data-sg-mod="${m.id}" role="button" tabindex="0" title="${escapeHtml(m.title)} — details kholen">
       <div class="sg-mod-ico">${m.icon}</div>
       <div class="min-w-0">
         <div class="flex items-center gap-2">
@@ -5172,9 +5239,55 @@ function renderSGModules(s) {
         </div>
         <p class="sg-mod-desc">${escapeHtml(m.desc)}</p>
         <p class="sg-mod-tag">${escapeHtml(m.tag)}</p>
+        <p class="sg-mod-hint">Details kholen \u2192</p>
       </div>
-      ${m.main ? `<a href="#/${m.main}" class="btn btn-ghost btn-sm shrink-0">Open</a>` : ""}
+      ${m.main ? `<a href="#/${m.main}" class="btn btn-ghost btn-sm shrink-0" data-sg-open="${m.main}" title="${escapeHtml(m.title)} kholen">Open</a>` : ""}
     </div>`).join("");
+}
+
+function sgModStat(s, m) {
+  return (m.data || []).map((d) => {
+    let v = s.stats[d.key];
+    if (d.key === "export_capable") v = s.stats.export_capable ? 3 : 0;
+    return `<div class="sg-dstat"><span class="sg-dstat-val">${v == null ? 0 : v}</span><span class="sg-dstat-lab">${escapeHtml(d.label)}</span></div>`;
+  }).join("");
+}
+
+function openSGModuleDetails(m, s) {
+  if (!m || !s) return;
+  openDialog(`
+    <div class="flex items-start justify-between gap-3">
+      <div class="min-w-0">
+        <h3 class="truncate text-base font-semibold">${m.icon} ${escapeHtml(m.title)}</h3>
+        <p class="mt-0.5 text-xs text-muted-foreground">${escapeHtml(m.desc)}</p>
+      </div>
+      <button type="button" class="btn btn-ghost btn-sm shrink-0" data-close-sg-detail aria-label="Close">\u2715</button>
+    </div>
+    <div class="mt-3 max-h-[60vh] space-y-4 overflow-y-auto pr-1">
+      <div>
+        <p class="sg-label">Data Status</p>
+        <div class="sg-dstats">${sgModStat(s, m)}</div>
+      </div>
+      <div>
+        <p class="sg-label">Key Features</p>
+        <ul class="sg-list">${(m.feats || []).map((f) => `<li>${escapeHtml(f)}</li>`).join("")}</ul>
+      </div>
+      <div>
+        <p class="sg-label">Kaise use karein</p>
+        <ol class="sg-list sg-list-num">${(m.howto || []).map((h) => `<li>${escapeHtml(h)}</li>`).join("")}</ol>
+      </div>
+      ${m.main ? `<button type="button" class="btn btn-primary w-full" data-sg-goto="${m.main}">${escapeHtml(m.title)} kholen \u2192</button>` : ""}
+    </div>
+  `);
+  const root = $("#dialog-root");
+  root.querySelector("[data-close-sg-detail]").addEventListener("click", closeDialog);
+  const goBtn = root.querySelector("[data-sg-goto]");
+  if (goBtn) {
+    goBtn.addEventListener("click", () => {
+      closeDialog();
+      switchView(m.main);
+    });
+  }
 }
 
 function renderSGShortcuts() {
@@ -5306,6 +5419,18 @@ function bindSystemGuideTabs() {
 function bindSystemGuideActions() {
   const root = document.body;
   root.addEventListener("click", (e) => {
+    const openLink = e.target.closest("[data-sg-open]");
+    if (openLink) {
+      e.preventDefault();
+      switchView(openLink.dataset.sgOpen);
+      return;
+    }
+    const mod = e.target.closest("[data-sg-mod]");
+    if (mod) {
+      const m = SG_MODULES.find((x) => x.id === mod.dataset.sgMod);
+      if (m && systemGuide.data) openSGModuleDetails(m, systemGuide.data);
+      return;
+    }
     const editBtn = e.target.closest("[data-sg-mem-edit]");
     const addBtn = e.target.closest("[data-sg-mem-add]");
     const moreBtn = e.target.closest("[data-sg-mem-full]");
@@ -5319,6 +5444,13 @@ function bindSystemGuideActions() {
       const list = systemGuide.data ? systemGuide.data.agents : [];
       const a = list.find((x) => x.id === Number(moreBtn.dataset.sgMemFull));
       if (a) openAgentMemoryDialog(a);
+    }
+  });
+  root.addEventListener("keydown", (e) => {
+    if ((e.key === "Enter" || e.key === " ") && e.target.closest("[data-sg-mod]")) {
+      e.preventDefault();
+      const m = SG_MODULES.find((x) => x.id === e.target.closest("[data-sg-mod]").dataset.sgMod);
+      if (m && systemGuide.data) openSGModuleDetails(m, systemGuide.data);
     }
   });
 }
