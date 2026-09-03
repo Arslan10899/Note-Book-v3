@@ -539,6 +539,17 @@ CREATE TABLE IF NOT EXISTS api_tools (
     description TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS web_portals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'web',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
 CREATE TABLE IF NOT EXISTS embed_vectors (
     id INTEGER PRIMARY KEY AUTOINCREMENT,
     doc_key TEXT UNIQUE NOT NULL,
@@ -685,7 +696,22 @@ def migrate_db():
             )
         conn.execute(
             """
-            CREATE TABLE IF NOT EXISTS embed_vectors (
+CREATE TABLE IF NOT EXISTS web_portals (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    name TEXT NOT NULL,
+    url TEXT NOT NULL,
+    notes TEXT NOT NULL DEFAULT '',
+    type TEXT NOT NULL DEFAULT 'web',
+    position INTEGER NOT NULL DEFAULT 0,
+    created_by TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
+            """
+        )
+        conn.execute(
+            """
+CREATE TABLE IF NOT EXISTS embed_vectors (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 doc_key TEXT UNIQUE NOT NULL,
                 kind TEXT NOT NULL,
@@ -6528,6 +6554,87 @@ def api_tools_delete(tool_id):
     return jsonify({"ok": True})
 
 
+@app.get("/api/portals")
+def web_portals_list():
+    conn = get_db()
+    rows = conn.execute("SELECT * FROM web_portals ORDER BY position, id").fetchall()
+    conn.close()
+    return jsonify({"portals": [dict(r) for r in rows]})
+
+
+@app.post("/api/portals")
+@can_write
+def web_portals_create():
+    data = request.get_json(silent=True) or {}
+    name = str(data.get("name") or "").strip()[:80]
+    url = str(data.get("url") or "").strip()[:2000]
+    notes = str(data.get("notes") or "").strip()[:2000]
+    ptype = str(data.get("type") or "web").strip().lower()
+    if ptype not in ("web", "sheet"):
+        ptype = "web"
+    if not name or not url:
+        return jsonify({"error": "Name aur URL required hain"}), 400
+    if not url.lower().startswith(("http://", "https://")):
+        return jsonify({"error": "Valid URL (http/https) required hain"}), 400
+    uname = _user_display_name() or ""
+    stamp = now_stamp()
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO web_portals (name, url, notes, type, position, created_by, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(position)+1 FROM web_portals), 0), ?, ?, ?)",
+        (name, url, notes, ptype, uname, stamp, stamp),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (cur.lastrowid,)).fetchone()
+    conn.close()
+    return jsonify(dict(row)), 201
+
+
+@app.put("/api/portals/<int:portal_id>")
+@can_write
+def web_portals_update(portal_id):
+    data = request.get_json(silent=True) or {}
+    conn = get_db()
+    row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (portal_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Portal not found"}), 404
+    name = str(data.get("name") if "name" in data else row["name"]).strip()[:80]
+    url = str(data.get("url") if "url" in data else row["url"]).strip()[:2000]
+    notes = str(data.get("notes") if "notes" in data else row["notes"]).strip()[:2000]
+    ptype = str(data.get("type") if "type" in data else row["type"]).strip().lower()
+    if ptype not in ("web", "sheet"):
+        ptype = row["type"]
+    if not name or not url:
+        conn.close()
+        return jsonify({"error": "Name aur URL required hain"}), 400
+    if not url.lower().startswith(("http://", "https://")):
+        conn.close()
+        return jsonify({"error": "Valid URL (http/https) required hain"}), 400
+    conn.execute(
+        "UPDATE web_portals SET name=?, url=?, notes=?, type=?, updated_at=? WHERE id=?",
+        (name, url, notes, ptype, now_stamp(), portal_id),
+    )
+    conn.commit()
+    row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (portal_id,)).fetchone()
+    conn.close()
+    return jsonify(dict(row))
+
+
+@app.delete("/api/portals/<int:portal_id>")
+@can_write
+def web_portals_delete(portal_id):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (portal_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Portal not found"}), 404
+    conn.execute("DELETE FROM web_portals WHERE id = ?", (portal_id,))
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True})
+
+
 @app.get("/api/chat/review")
 @admin_only
 def chat_review_get():
@@ -7295,6 +7402,7 @@ def delete_routine(routine_id):
 BACKUP_TABLES = [
     "tasks", "notes", "routines", "routine_completions", "note_versions",
     "pages", "note_shares", "chat_agents", "agent_memory", "api_tools", "app_settings",
+    "web_portals",
 ]
 # Curated/chat tables are reset too, but kept OUT of JSON/Excel backups (for now):
 # chat history and per-user auth stay local; live API keys, users, and derived
@@ -7643,6 +7751,26 @@ def import_backup():
                 (key, str(row.get("value") or ""), str(row.get("updated_at") or now_stamp())),
             )
             count("app_settings", "imported")
+        for row in data.get("web_portals", []):
+            name = str(row.get("name") or "").strip()
+            url = str(row.get("url") or "").strip()
+            if not name or not url:
+                count("web_portals", "skipped")
+                continue
+            if mode == "merge":
+                dup = conn.execute("SELECT 1 FROM web_portals WHERE lower(name)=lower(?) AND url=?", (name, url)).fetchone()
+                if dup:
+                    count("web_portals", "skipped")
+                    continue
+            conn.execute(
+                "INSERT INTO web_portals (name, url, notes, type, position, created_by, created_at, updated_at) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
+                (name, url, str(row.get("notes") or ""),
+                 str(row.get("type") or "web") if str(row.get("type") or "web") in ("web", "sheet") else "web",
+                 _as_int(row.get("position"), 0), str(row.get("created_by") or ""),
+                 str(row.get("created_at") or now_stamp()), str(row.get("updated_at") or now_stamp())),
+            )
+            count("web_portals", "imported")
         conn.execute("COMMIT")
     except Exception:
         conn.execute("ROLLBACK")
@@ -7667,6 +7795,7 @@ TABLE_COLS = {
     "agent_memory": ["id", "agent_id", "kind", "key", "content", "source", "created_by", "created_at", "updated_at"],
     "api_tools": ["id", "name", "url_template", "method", "enabled", "description", "created_at"],
     "app_settings": ["key", "value", "updated_at"],
+    "web_portals": ["id", "name", "url", "notes", "type", "position", "created_by", "created_at", "updated_at"],
 }
 
 
@@ -7861,9 +7990,9 @@ def import_excel():
                     f"INSERT INTO {table} ({', '.join(cols)}) VALUES ({ph})", vals
                 )
                 count(table, "imported")
-        # Agent-flow sheets: agents, their memories, tools, and app settings.
+        # Agent-flow / extra sheets: agents, their memories, tools, app settings, and web portals.
         agent_id_map = {}
-        for table in ["chat_agents", "agent_memory", "api_tools", "app_settings"]:
+        for table in ["chat_agents", "agent_memory", "api_tools", "app_settings", "web_portals"]:
             if table not in sheets:
                 continue
             rows = list(wb[table].iter_rows(values_only=True))

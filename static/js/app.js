@@ -6,6 +6,7 @@ const state = {
   notes: [],
   pages: [],
   routines: [],
+  portals: [],
   view: "dashboard",
   taskFilter: "all",
   noteQuery: "",
@@ -244,6 +245,8 @@ function loadAll() {
     api("/api/notes").then((d) => (state.notes = d)),
     api("/api/pages").then((d) => (state.pages = d)),
     api("/api/routines").then((d) => (state.routines = d)),
+    api("/api/portals").then((d) => (state.portals = (d && Array.isArray(d.portals)) ? d.portals : []))
+      .catch(() => { state.portals = []; }),
   ]);
 }
 
@@ -3619,17 +3622,11 @@ function showPasteMenu(rectAtPaste, richAvailable) {
 const PORTALS_KEY = "pa_web_portals";
 
 function getPortals() {
-  try {
-    const raw = localStorage.getItem(PORTALS_KEY);
-    const arr = raw ? JSON.parse(raw) : [];
-    return Array.isArray(arr) ? arr : [];
-  } catch (err) {
-    return [];
-  }
+  return state.portals;
 }
 
 function savePortals(list) {
-  localStorage.setItem(PORTALS_KEY, JSON.stringify(list));
+  state.portals = list;
 }
 
 function normalUrl(url) {
@@ -3723,8 +3720,12 @@ function renderPortals() {
       const list = getPortals();
       const p = list[Number(b.dataset.delPortal)];
       if (!p) return;
-      confirmDialog(`Remove "${p.name}"?`, () => {
-        savePortals(getPortals().filter((_, j) => j !== Number(b.dataset.delPortal)));
+      confirmDialog(`Remove "${p.name}"?`, async () => {
+        const id = p.id;
+        try {
+          if (id != null) await api(`/api/portals/${id}`, { method: "DELETE" });
+        } catch (err) {}
+        state.portals = getPortals().filter((_, j) => j !== Number(b.dataset.delPortal));
         renderPortals();
       });
     })
@@ -3761,15 +3762,33 @@ function portalDialog(idx) {
     </form>
   `);
   $("#portal-form [data-cancel-dialog]").addEventListener("click", closeDialog);
-  $("#portal-form").addEventListener("submit", (e) => {
+  $("#portal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = $("#portal-name").value.trim();
     const url = normalUrl($("#portal-url").value);
     const notes = $("#portal-notes").value.trim();
     const type = $("#portal-type").value;
     if (!name || !url) return;
-    if (editing) list[idx] = { name, url, notes, type };
-    else list.push({ name, url, notes, type });
+    const body = { name, url, notes, type };
+    const existed = editing && editing.id != null;
+    let row;
+    try {
+      row = await api(existed ? `/api/portals/${editing.id}` : "/api/portals", {
+        method: existed ? "PUT" : "POST",
+        body: JSON.stringify(body),
+      });
+    } catch (err) {
+      toast(err.message || "Portal save failed", "error");
+      return;
+    }
+    const list = getPortals();
+    if (existed) {
+      const i = list.findIndex((p) => p && p.id === editing.id);
+      if (i >= 0) list[i] = row;
+      else list.push(row);
+    } else {
+      list.push(row);
+    }
     savePortals(list);
     renderPortals();
     closeDialog();
@@ -3781,7 +3800,36 @@ function initPortals() {
   $("#portals-add-btn").addEventListener("click", () => portalDialog(null));
 }
 
-function loadPortals() {
+async function loadPortals() {
+  try {
+    const d = await api("/api/portals");
+    const list = (d && Array.isArray(d.portals)) ? d.portals : [];
+    // Migrate any browser-local portals (old behaviour) into the DB once,
+    // but only when the DB has none (so we never duplicate).
+    const legacy = localStorage.getItem(PORTALS_KEY);
+    if (legacy) {
+      try {
+        const old = JSON.parse(legacy);
+        if (Array.isArray(old) && old.length && list.length === 0) {
+          for (const p of old) {
+            if (p && (p.name || "").trim()) {
+              await api("/api/portals", {
+                method: "POST",
+                body: JSON.stringify({ name: p.name, url: p.url, notes: p.notes || "", type: p.type === "sheet" ? "sheet" : "web" }),
+              });
+            }
+          }
+        }
+      } catch (err) {}
+      if (list.length === 0) {
+        localStorage.removeItem(PORTALS_KEY);
+      }
+    }
+    const fresh = await api("/api/portals");
+    state.portals = (fresh && Array.isArray(fresh.portals)) ? fresh.portals : [];
+  } catch (err) {
+    state.portals = [];
+  }
   renderPortals();
 }
 
@@ -7163,31 +7211,20 @@ function initApp() {
     const doImport = async () => {
       status.textContent = "Importing...";
       try {
-        // Strip/restore the browser-local "web_portals" part into localStorage,
-        // the rest of the file goes to the server.
+        // Web portals are now stored on the server (web_portals table).
+        // Skip the old browser-local web_portals splitting entirely.
         let payload;
-        let hadPortals = false;
         try {
           payload = JSON.parse(await file.text());
         } catch (err) {
           throw new Error("Invalid JSON backup file");
-        }
-        const holder = payload && payload.data && typeof payload.data === "object" ? payload.data : payload;
-        if (holder && typeof holder === "object") {
-          if (Array.isArray(holder.web_portals)) {
-            hadPortals = true;
-            savePortals(holder.web_portals.filter((p) => p && (p.name || "").trim()));
-            delete holder.web_portals;
-          }
-        } else {
-          throw new Error("Unexpected backup structure");
         }
         const fd = new FormData();
         fd.append("file", new File([JSON.stringify(payload)], file.name, { type: "application/json" }));
         fd.append("mode", mode);
         const res = await api("/api/import", { method: "POST", body: fd });
         status.textContent = `Done — imported ${res.imported}, skipped ${res.skipped}`;
-        toast(`Backup restored (${mode})${hadPortals ? ", portals included" : ""}`);
+        toast(`Backup restored (${mode})`);
         if (state.view === "webportals") renderPortals();
         await loadAll();
       } catch (e) {
@@ -7209,7 +7246,7 @@ function initApp() {
     }, "Reset");
   });
 
-  // Export JSON = server data + browser-local web portals in one file
+  // Export JSON = server data (web portals now live in the DB and are included)
   $("#export-json-btn").addEventListener("click", async (e) => {
     e.preventDefault();
     const btn = $("#export-json-btn");
@@ -7220,9 +7257,7 @@ function initApp() {
       if (!navigator.onLine) throw new Error("Offline — cannot fetch server data");
       const res = await fetch("/api/export/json");
       if (!res.ok) throw new Error("Export failed");
-      const payload = JSON.parse(await res.text());
-      if (payload && payload.data && typeof payload.data === "object") payload.data.web_portals = getPortals();
-      else if (payload && typeof payload === "object") payload.web_portals = getPortals();
+      const payload = await res.json();
       const stamp = new Date().toISOString().replace(/[-:T]/g, "").slice(0, 14);
       const blob = new Blob([JSON.stringify(payload, null, 2)], { type: "application/json" });
       const a = document.createElement("a");

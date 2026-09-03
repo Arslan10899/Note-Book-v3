@@ -427,6 +427,53 @@ class TestExport(BaseTest):
         self.assertFalse(os.path.exists(staging))
 
 
+class TestWebPortals(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.register()  # admin
+
+    def test_crud_roundtrip(self):
+        # create
+        r = self.client.post("/api/portals", json={"name": "Gmail", "url": "https://mail.google.com", "notes": "work mail", "type": "web"})
+        self.assertEqual(r.status_code, 201)
+        pid = r.get_json()["id"]
+        self.assertTrue(any(p["name"] == "Gmail" for p in self.client.get("/api/portals").get_json()["portals"]))
+
+        # update
+        u = self.client.put(f"/api/portals/{pid}", json={"name": "Gmail Work", "notes": "updated"})
+        self.assertEqual(u.status_code, 200)
+        self.assertEqual(u.get_json()["name"], "Gmail Work")
+
+        # delete
+        d = self.client.delete(f"/api/portals/{pid}")
+        self.assertEqual(d.status_code, 200)
+        self.assertFalse(any(p["id"] == pid for p in self.client.get("/api/portals").get_json()["portals"]))
+
+    def test_validation(self):
+        self.assertEqual(self.client.post("/api/portals", json={"name": "", "url": "x"}).status_code, 400)
+        self.assertEqual(self.client.post("/api/portals", json={"name": "a", "url": "notaurl"}).status_code, 400)
+
+    def test_included_in_json_backup(self):
+        self.client.post("/api/portals", json={"name": "Drive", "url": "https://drive.google.com", "notes": "", "type": "sheet"})
+        payload = self.client.get("/api/export/json").get_json()["data"]
+        self.assertIn("web_portals", payload)
+        self.assertTrue(any(p["name"] == "Drive" for p in payload["web_portals"]))
+
+    def test_restore_via_json_roundtrip(self):
+        self.client.post("/api/portals", json={"name": "Sheets", "url": "https://sheets.google.com", "notes": "", "type": "sheet"})
+        backup = self.client.get("/api/export/json").get_json()
+        self.client.post("/api/reset")
+        self.register()
+        st = self.client.post(
+            "/api/import",
+            data={"file": (io.BytesIO(json.dumps(backup).encode("utf-8")), "b.json"), "mode": "replace"},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(st.status_code, 200)
+        portals = self.client.get("/api/portals").get_json()["portals"]
+        self.assertTrue(any(p["name"] == "Sheets" for p in portals))
+
+
 class TestDotEnv(BaseTest):
     def test_env_file_loaded(self):
         tmp = tempfile.NamedTemporaryFile("w", suffix=".env", delete=False, encoding="utf-8")
