@@ -6,6 +6,7 @@ import math
 import os
 import re
 import secrets
+import shutil
 import sqlite3
 import tempfile
 import time
@@ -7737,11 +7738,27 @@ def import_sqlite():
         return jsonify({"error": f"Invalid database backup ({exc})"}), 400
     conn = get_db()
     conn.close()
+    # The uploaded snapshot lands in /tmp, which on PythonAnywhere is a
+    # different filesystem from the home folder. os.replace() fails there with
+    # "Invalid cross-device link", so copy to a same-device path first.
     try:
-        os.replace(tmp_path, str(DB_PATH))
+        if os.path.dirname(tmp_path) != os.path.dirname(str(DB_PATH)):
+            staging = os.path.join(os.path.dirname(str(DB_PATH)), "assistant-import-staging.sqlite")
+            shutil.copyfile(tmp_path, staging)
+            os.replace(staging, str(DB_PATH))
+        else:
+            os.replace(tmp_path, str(DB_PATH))
     except PermissionError:
-        os.unlink(tmp_path)
+        try:
+            os.unlink(staging if "staging" in locals() else tmp_path)
+        except OSError:
+            pass
         return jsonify({"error": "Database is busy (a save is in progress) — try again in a few seconds"}), 409
+    finally:
+        try:
+            os.unlink(tmp_path)
+        except OSError:
+            pass
     init_db()
     return jsonify({"ok": True})
 

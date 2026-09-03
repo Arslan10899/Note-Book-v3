@@ -395,6 +395,37 @@ class TestExport(BaseTest):
         self.assertEqual(len(restored), 1)
         self.assertTrue(any(m["key"] == "policy" and "Copay 20%" in m["content"] for m in restored[0]["memory"]))
 
+    def test_sqlite_snapshot_restore_cross_device_roundtrip(self):
+        """Restore SQLite snapshot must survive a cross-device save path (PythonAnywhere /tmp -> home).
+
+        History: os.replace(tmp, DB_PATH) raised OSError Errno 18 "Invalid cross-device
+        link" because the uploaded snapshot lands in /tmp, which lives on a different
+        filesystem than the home folder. The fix first copies the snapshot to a same-device
+        staging path (next to DB_PATH), then replaces. In the test harness the uploaded
+        file lands in the system temp dir while DB_PATH sits in a nested temp subdir, so the
+        two have different dirnames — exactly the branch the fix exists for.
+        """
+        self.client.post("/api/notes", json={"title": "CrossDeviceNote", "content": "keep"})
+        snap = self.client.get("/api/export/sqlite").data
+
+        self.client.post("/api/reset")
+        self.register()
+
+        r = self.client.post(
+            "/api/import/sqlite",
+            data={"file": (io.BytesIO(snap), "b.sqlite")},
+            content_type="multipart/form-data",
+        )
+        self.assertEqual(r.status_code, 200)
+        self.assertEqual(r.get_json(), {"ok": True})
+
+        notes = self.client.get("/api/notes").get_json()
+        self.assertTrue(any(n["title"] == "CrossDeviceNote" for n in notes))
+
+        # staging copy must be cleaned up after a successful restore
+        staging = os.path.join(os.path.dirname(str(app_module.DB_PATH)), "assistant-import-staging.sqlite")
+        self.assertFalse(os.path.exists(staging))
+
 
 class TestDotEnv(BaseTest):
     def test_env_file_loaded(self):
