@@ -529,39 +529,52 @@
             </div>
           </div>
           <div class="space-y-4 p-4 pt-0">
+            <div class="space-y-3">
+              <div class="space-y-1 rounded-lg border p-4">
+                <label class="text-sm font-semibold flex items-center gap-2">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
+                  Full Backup (SQLite) — Recommended
+                </label>
+                <p class="text-xs text-muted-foreground">
+                  Sab kuch ek file mein — <span class="text-foreground">notes, tasks, pages, routines, agents, agent memory, api keys, settings, users aur chat history</span>. Restore karti hai bilkul byte-perfect. Yeh hi asal full website ka backup hai.
+                </p>
+                <div class="flex flex-wrap gap-2 pt-2">
+                  <a id="export-sqlite-btn" href="/api/export/sqlite" class="btn btn-primary btn-sm" download>
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
+                    Export Full Backup (SQLite)
+                  </a>
+                </div>
+              </div>
+              <div class="space-y-2 rounded-lg border border-dashed border-border p-4">
+                <label class="text-sm font-medium">Restore Full Backup (SQLite)</label>
+                <p class="text-xs text-muted-foreground">.sqlite/.db file se <span class="text-foreground">sara data</span> restore hota hai — agents, api keys, users, notes, memory, settings, chat history sab (recommended).</p>
+                <div class="flex flex-wrap items-center gap-2">
+                  <button type="button" id="pick-sqlite-btn" class="btn btn-outline btn-sm">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
+                    Choose file
+                  </button>
+                  <span id="sqlite-file-name" class="max-w-[240px] truncate text-xs text-muted-foreground">No file chosen</span>
+                </div>
+                <input id="import-sqlite-file" type="file" accept=".sqlite,.sqlite3,.db,application/x-sqlite3" class="hidden" />
+                <div class="flex items-center gap-3">
+                  <button id="import-sqlite-btn" class="btn btn-primary btn-sm">Restore</button>
+                  <span id="import-sqlite-status" class="text-xs text-muted-foreground"></span>
+                </div>
+              </div>
+            </div>
             <div class="flex flex-wrap gap-2">
-              <a id="export-json-btn" href="/api/export/json" class="btn btn-outline btn-sm" download>
+              <a id="export-json-btn" href="/api/export/json" class="btn btn-outline btn-sm" download title="Content only (notes, tasks, agents) — no users/API keys">
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                 Export JSON
               </a>
-              <a id="export-excel-btn" href="/api/export/excel" class="btn btn-outline btn-sm" download>
+              <a id="export-excel-btn" href="/api/export/excel" class="btn btn-outline btn-sm" download title="Content only (notes, tasks, pages, routines, agents)">
                 <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" x2="12" y1="15" y2="3"/></svg>
                 Export Excel
               </a>
-              <a id="export-sqlite-btn" href="/api/export/sqlite" class="btn btn-outline btn-sm" download>
-                <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="5" rx="9" ry="3"/><path d="M3 5V19A9 3 0 0 0 21 19V5"/><path d="M3 12A9 3 0 0 0 21 12"/></svg>
-                Export SQLite
-              </a>
             </div>
             <div class="space-y-2 rounded-lg border border-dashed border-border p-4">
-              <label class="text-sm font-medium">Restore SQLite snapshot</label>
-              <p class="text-xs text-muted-foreground">Full database file — restores everything exactly (recommended)</p>
-              <div class="flex flex-wrap items-center gap-2">
-                <button type="button" id="pick-sqlite-btn" class="btn btn-outline btn-sm">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
-                  Choose file
-                </button>
-                <span id="sqlite-file-name" class="max-w-[240px] truncate text-xs text-muted-foreground">No file chosen</span>
-              </div>
-              <input id="import-sqlite-file" type="file" accept=".sqlite,.sqlite3,.db,application/x-sqlite3" class="hidden" />
-              <div class="flex items-center gap-3">
-                <button id="import-sqlite-btn" class="btn btn-primary btn-sm">Restore</button>
-                <span id="import-sqlite-status" class="text-xs text-muted-foreground"></span>
-              </div>
-            </div>
-            <div class="space-y-2 rounded-lg border border-dashed border-border p-4">
-              <label class="text-sm font-medium">Import Excel workbook</label>
-              <p class="text-xs text-muted-foreground">.xlsx exported from this app (sheets: Notes, Tasks, Pages, Routines)</p>
+              <label class="text-sm font-medium">Import Excel workbook <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">content only</span></label>
+              <p class="text-xs text-muted-foreground">.xlsx files khaali content (Notes, Tasks, Pages, Routines, Agents) — users/API keys include nahi</p>
               <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="pick-excel-btn" class="btn btn-outline btn-sm">
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
@@ -584,8 +597,8 @@
               </div>
             </div>
             <div class="space-y-2 rounded-lg border border-dashed border-border p-4">
-              <label class="text-sm font-medium">Restore backup</label>
-              <p class="text-xs text-muted-foreground">JSON backup includes notes, tasks, routines, pages, share links &amp; web portals</p>
+              <label class="text-sm font-medium">Restore backup <span class="ml-1 rounded bg-muted px-1.5 py-0.5 text-[10px] font-normal text-muted-foreground">content only</span></label>
+              <p class="text-xs text-muted-foreground">JSON backup includes notes, tasks, routines, pages, share links, agents &amp; web portals — users/API keys include nahi</p>
               <div class="flex flex-wrap items-center gap-2">
                 <button type="button" id="pick-json-btn" class="btn btn-outline btn-sm">
                   <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M20 20a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"/></svg>
