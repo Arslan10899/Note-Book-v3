@@ -1394,6 +1394,17 @@ body.sidebar-open #sidebar-overlay {
 .dark .md-table th { background: hsl(var(--accent)); }
 .dark .md-table tr:nth-child(even) td { background: hsl(var(--accent) / 0.5); }
 
+/* Dark mode: note rich-text content often carries near-black inline text
+   (e.g. pasted `rgb(9, 9, 11)` / `#000`). That stays dark on a dark background
+   and becomes unreadable. A JS helper neutralises only *dark* inline text
+   colours (bright highlights like red/green stay as-is), and the wrapper
+   rules below give every text element a legible fallback so nothing is ever
+   invisible. */
+.dark #viewer-content table td,
+.dark #note-content-input table td {
+  color: var(--foreground) !important;
+}
+
 /* Live agent node flow tracker (n8n-style) */
 .chat-flow-wrap {
   position: relative;

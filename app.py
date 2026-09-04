@@ -1338,8 +1338,34 @@ def _query_terms(text):
 
 
 def _html_to_text(value):
-    """Strip HTML tags/entities so rich-text note & page content reads as plain text."""
+    """Strip HTML/entities from rich-text note & page content so it reads as plain
+    text — but turn any <table> into a markdown pipe-table so column structure is
+    preserved for the LLM (and so the chat renderer can show a real table)."""
     text = str(value or "")
+    # Convert each <table> block to a pipe table (header + separator row + body).
+    def _table_to_md(m):
+        inner = m.group(1)
+        rows = []
+        buf = []
+        cur = []
+        for tok in re.findall(r"<tr[^>]*>.*?</tr>", inner, flags=re.I | re.S):
+            cells = re.findall(r"<(?:th|td)[^>]*>(.*?)</(?:th|td)>", tok, flags=re.I | re.S)
+            if cells:
+                rows.append([re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", cell)).strip() for cell in cells])
+        if not rows:
+            return ""
+        # Heuristic: if the first row is all-bold/short, treat it as a header.
+        md = []
+        max_cols = max(len(r) for r in rows)
+        header = rows[0]
+        header = (header + [""] * (max_cols - len(header)))[:max_cols]
+        md.append("| " + " | ".join(header) + " |")
+        md.append("| " + " | ".join(["---"] * max_cols) + " |")
+        for r in rows[1:]:
+            r = (r + [""] * (max_cols - len(r)))[:max_cols]
+            md.append("| " + " | ".join(r) + " |")
+        return "\n".join(md)
+    text = re.sub(r"<table[^>]*>(.*?)</table>", _table_to_md, text, flags=re.I | re.S)
     text = re.sub(r"<br\s*/?>", "\n", text, flags=re.I)
     text = re.sub(r"</(p|div|li|h[1-6]|ul|ol|tr)>", "\n", text, flags=re.I)
     text = re.sub(r"<[^>]+>", "", text)

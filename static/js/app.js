@@ -168,6 +168,29 @@ function applyTheme(theme) {
   localStorage.setItem("theme", theme);
   document.documentElement.classList.toggle("dark", theme === "dark");
   syncThemeUI();
+  neutralizeNoteTextColors();
+}
+
+// Dark mode: note rich-text often carries near-black inline text colour
+// (e.g. pasted `rgb(9, 9, 11)` / `#000`). On a dark background that text is
+// invisible. We swap only *achromatic dark* inline colours to the theme
+// foreground (so black/grey text becomes readable and follows the theme),
+// while leaving bright chromatic highlights (red/green/blue) untouched.
+function neutralizeNoteTextColors(root = document) {
+  if (!document.documentElement.classList.contains("dark")) return;
+  root.querySelectorAll("#viewer-content *, #note-content-input *").forEach((n) => {
+    const t = (n.tagName || "").toUpperCase();
+    if (t === "A" || t === "CODE" || t === "PRE") return;
+    const cs = getComputedStyle(n);
+    if (!cs.color) return;
+    const m = cs.color.match(/\d+(\.\d+)?/g);
+    if (!m || m.length < 3) return;
+    const rgb = m.slice(0, 3).map(Number);
+    const lin = (v) => { v /= 255; return v <= 0.04045 ? v / 12.92 : Math.pow((v + 0.055) / 1.055, 2.4); };
+    const lum = 0.2126 * lin(rgb[0]) + 0.7152 * lin(rgb[1]) + 0.0722 * lin(rgb[2]);
+    const chroma = Math.max(rgb[0], rgb[1], rgb[2]) - Math.min(rgb[0], rgb[1], rgb[2]);
+    if (lum < 0.45 && chroma < 40) n.style.color = "var(--foreground)";
+  });
 }
 
 function syncThemeUI() {
@@ -370,6 +393,7 @@ function openEditor(id, kind = "note") {
   $("#note-title-input").placeholder = "Untitled note";
   $("#note-tags-input").value = doc ? doc.tags : "";
   $("#note-content-input").innerHTML = doc ? doc.content : "";
+  neutralizeNoteTextColors();
   updatePinBtn();
   $("#save-state").textContent = "";
   $("#notes-list-wrap").classList.add("hidden");
@@ -1970,6 +1994,7 @@ function openViewer(id, from = null) {
     .join(" ");
   $("#viewer-meta").innerHTML = `Created ${fmtStampFull(note.created_at)} · Updated ${relTime(note.updated_at)}${tagsHtml ? ` · ${tagsHtml}` : ""}`;
   $("#viewer-content").innerHTML = note.content || "<p class='text-muted-foreground'>Empty note</p>";
+  neutralizeNoteTextColors();
   $("#viewer-edit-btn").onclick = () => openEditor(note.id);
   $("#viewer-share-btn").onclick = () => shareNoteDialog(note);
   $("#viewer-print-btn").onclick = () => printNote(note);
