@@ -1985,26 +1985,22 @@ def _extract_json(text):
 
 _RAG_SYNTHESIS_RULES = (
     "STRICT KNOWLEDGE-ANSWER RULES (apply to EVERY answer based on the saved notes/KB below):\n"
-    "1. SMART SYNTHESIS — NEVER dump, echo, or copy-paste any retrieved note/knowledge text "
-    "word-for-word. Read the context, mentally filter out everything unrelated to the exact "
-    "question, then write your OWN concise, professional, well-organized answer. If a saved "
-    "note is long, condense it to only the parts that answer the question.\n"
-    "2. RELEVANCE FILTER — Ignore headers, timestamps, version history, and tangential or "
-    "unrelated paragraphs that appear inside a retrieved note. Answer ONLY from the relevant "
-    "parts; never surface noise that has nothing to do with the question.\n"
-    "3. STANDARD OUTPUT STRUCTURE for any knowledge/note-based answer:\n"
-    "   a) DIRECT ANSWER at the top — a sharp, direct, actionable answer to exactly what was "
-    "      asked, in 2-4 concise bullet points or short sentences.\n"
-    "   b) EXPLANATION & CONTEXT below — ONLY if there is genuinely useful background, policy "
-    "      reasoning, or billing-guideline nuance, add a clean separate section under the "
-    "      heading `### 💡 Explanation & Billing Context:` with a short synthesized "
-    "      explanation of the rule, why it applies, and any relevant caveats. Skip this "
-    "      section entirely when the direct answer already covers everything.\n"
-    "   c) SOURCE REFERENCE — close with one discreet footer line in the format "
-    "      `📌 Source: <Type> <Title>` (e.g. \"📌 Source: Note #12 — BCBS Modifier Rules\"). "
-    "      Never paste the full document text after it.\n"
+    "1. SHOW ACTUAL DATA FIRST — The user wants to SEE the real data from their own records. "
+    "Copy-paste the exact relevant row(s), table excerpt, or rule text from the retrieved "
+    "context at the TOP of your reply. Preserve the original table format (pipe-table or "
+    "numbered list) so the user can verify the source data. Do NOT paraphrase or summarize "
+    "the data here — show it exactly as it appears in the note/knowledge base.\n"
+    "2. EXPLANATION — Below the raw data, add a section under the heading "
+    "`### 💡 Explanation` where you synthesize, interpret and explain the data in plain "
+    "language. Cover: what it means, how it applies to the user's question, any billing "
+    "rules or caveats, and what action to take. Write this in the user's language "
+    "(Urdu / Roman Urdu / English). Only include this section when the data genuinely "
+    "benefits from explanation; skip it for trivial lookups.\n"
+    "3. SOURCE REFERENCE — close with one discreet footer line in the format "
+    "📌 Source: <Type> <Title> (e.g. \"📌 Source: Note — VDL CPT Rates for Patient Billing\"). "
+    "Never paste the full document text after it.\n"
     "Keep every code (CPT/ICD), date, figure and rule exactly as written — never change or "
-    "invent them. Write the answer in the same language the user writes in (Urdu / Roman "
+    "invent them. Write the explanation in the same language the user writes in (Urdu / Roman "
     "Urdu / English), keeping the tone professional and conversational."
 )
 
@@ -5152,9 +5148,9 @@ def _local_reply_text(best, terms=None, user_name=None, first_message=False):
         label = f"{APP_SOURCE_LABELS.get(e['kind'], 'Guideline')}: {e['title']}"
         if e["kind"] == "guideline" and e["tag"]:
             label += f" ({e['tag']})"
+        # For table data: show full snippet (header + matching rows) as-is.
+        # For plain text: show as before.
         lines.append(f"**{label}**\n{snippet}" if snippet else f"**{label}**")
-    # RAG context injection is INVISIBLE: no "I found X matches in your saved
-    # data" preamble — the saved data reads like a direct answer.
     greet = f"{_greeting()}, {user_name}!\n\n" if first_message and user_name else ""
     return greet + "\n\n".join(lines)
 

@@ -1502,10 +1502,9 @@ class TestToolRenderingAndPersona(BaseTest):
                 app_module._gemini_reply("gemini", "modifier 25 kab use hota hai?", ctx)
             sys_txt = m.call_args[0][1]
             self.assertIn("STRICT KNOWLEDGE-ANSWER RULES", sys_txt)
-            self.assertIn("NEVER dump, echo, or copy-paste", sys_txt)
-            self.assertIn("RELEVANCE FILTER", sys_txt)
-            self.assertIn("DIRECT ANSWER", sys_txt)
-            self.assertIn("### 💡 Explanation & Billing Context:", sys_txt)
+            self.assertIn("SHOW ACTUAL DATA FIRST", sys_txt)
+            self.assertIn("EXPLANATION", sys_txt)
+            self.assertIn("### 💡 Explanation", sys_txt)
             self.assertIn("📌 Source:", sys_txt)
             self.assertIn("BCBS Modifier Rules", sys_txt)  # context is still supplied
         finally:
@@ -1523,9 +1522,8 @@ class TestToolRenderingAndPersona(BaseTest):
                 )
             sys_txt = m.call_args[0][1]
             self.assertIn("AGENT INSTRUCTIONS", sys_txt)
-            self.assertIn("SMART SYNTHESIS", sys_txt)
+            self.assertIn("SHOW ACTUAL DATA FIRST", sys_txt)
             self.assertIn("📌 Source:", sys_txt)
-            self.assertIn("DIRECT ANSWER", sys_txt)
         finally:
             os.environ.pop("GEMINI_API_KEY", None)
 
