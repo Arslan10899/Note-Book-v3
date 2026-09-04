@@ -5138,7 +5138,13 @@ def _append_answer_footer(text, agent=None, source=None):
 
 
 def _local_reply_text(best, terms=None, user_name=None, first_message=False):
-    shown = best[:2]
+    # Only show entries whose text actually contains the query terms —
+    # avoids showing irrelevant notes (e.g. Vitamin D note when user asked about 85025).
+    if terms:
+        relevant = [h for h in best if any(t in (h["entry"].get("text") or "").lower() for t in terms)]
+        shown = relevant[:2] if relevant else best[:1]
+    else:
+        shown = best[:2]
     lines = []
     for hit in shown:
         e = hit["entry"]
