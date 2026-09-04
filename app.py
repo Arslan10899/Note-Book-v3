@@ -1346,15 +1346,16 @@ def _html_to_text(value):
     def _table_to_md(m):
         inner = m.group(1)
         rows = []
-        buf = []
-        cur = []
         for tok in re.findall(r"<tr[^>]*>.*?</tr>", inner, flags=re.I | re.S):
             cells = re.findall(r"<(?:th|td)[^>]*>(.*?)</(?:th|td)>", tok, flags=re.I | re.S)
             if cells:
                 rows.append([re.sub(r"\s+", " ", re.sub(r"<[^>]+>", "", cell)).strip() for cell in cells])
         if not rows:
             return ""
-        # Heuristic: if the first row is all-bold/short, treat it as a header.
+        # Detect header: <th> tags indicate the first row is a header.
+        # <thead>/<tbody> split may produce duplicate header rows; keep only one.
+        if len(rows) > 1 and rows[0] == rows[1]:
+            rows = [rows[0]] + rows[2:]
         md = []
         max_cols = max(len(r) for r in rows)
         header = rows[0]
@@ -4359,8 +4360,36 @@ def agent_answer(sid, question, user_name=None, first_message=False, portals=Non
 
 
 def _local_snippet(text, terms):
-    """Show the part of the text that actually matches the question, not just the first 420 chars."""
+    """Show the part of the text that actually matches the question, not just the first 420 chars.
+    For pipe-table content, extract only the header + matching rows so the LLM
+    sees the relevant data without being drowned in unrelated table rows."""
     text = text.strip()
+
+    # ── Pipe-table-aware extraction ──────────────────────────────────────
+    lines = text.split("\n")
+    # Find the FIRST line of each contiguous table block (not every pipe-line)
+    table_starts = []
+    for i, l in enumerate(lines):
+        if re.match(r"^\|\s*\S", l) and (i == 0 or not lines[i - 1].startswith("|")):
+            table_starts.append(i)
+    if table_starts and terms:
+        t_lower = [t.lower() for t in terms]
+        out = []
+        for ts in table_starts:
+            te = ts
+            while te < len(lines) and lines[te].startswith("|"):
+                te += 1
+            header = lines[ts:ts+2] if ts+1 < te else lines[ts:ts+1]
+            sep_idx = ts + 1 if ts+1 < te and re.match(r"^\|\s*---", lines[ts+1]) else -1
+            data_rows = lines[(sep_idx+1 if sep_idx > ts else ts+1):te]
+            matching = [r for r in data_rows if any(t in r.lower() for t in t_lower)]
+            if matching:
+                out.extend(header)
+                out.extend(matching)
+        if out:
+            return "\n".join(out)
+
+    # ── Fallback: plain-text snippet (original logic) ─────────────────────
     hay = text.lower()
     where = -1
     for t in (terms or []):
