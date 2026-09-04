@@ -907,6 +907,7 @@ function applyRoleUI() {
 }
 
 async function boot() {
+  applyBootRoute();
   try {
     const res = await fetch("/api/auth/me");
     if (!res.ok) throw new Error("unauthenticated");
@@ -916,6 +917,22 @@ async function boot() {
     return;
   }
   initApp();
+}
+
+// Show the deep-linked view shell synchronously BEFORE any async work
+// (auth check / data load), so a refresh at e.g. #/notes never flashes the
+// wrong shell. Without this the blank shell is visible for as long as the
+// /api/auth/me round-trip takes (a second+ on a cold PythonAnywhere worker).
+function applyBootRoute() {
+  const segs = location.hash.replace(/^#\/?/, "").split("/").filter(Boolean);
+  const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents", "system-guide"];
+  if (segs.length && VIEWS.includes(segs[0])) {
+    switchViewShell(segs[0]);
+    state.view = segs[0];
+  } else {
+    switchViewShell("dashboard");
+    state.view = "dashboard";
+  }
 }
 
 function wireUserMenu() {
