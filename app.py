@@ -2835,15 +2835,31 @@ _SQL_TABLE_RE = re.compile(r"\b(?:from|join)\s+([a-z][a-z0-9_]*)\b", re.IGNORECA
 
 
 def _sql_to_markdown(cols, rows, cap=25):
-    """Render query results as a compact markdown table (max cap rows)."""
+    """Render query results as a compact markdown table (max cap rows). Any cell
+    that holds rich content (a note/page body converted from HTML, i.e. it is a
+    multi-line markdown pipe-table) is rendered as its own full block instead of
+    a shredded/truncated grid cell, so the LLM sees the complete note content
+    and can answer about a specific table row."""
     if not cols:
         return "_Query se koi result nahi mila._"
     out = []
     out.append("| " + " | ".join(str(c) for c in cols) + " |")
     out.append("|" + "|".join("---" for _ in cols) + "|")
     for row in list(rows)[:cap]:
-        cells = [(str(v) if v is not None else "") for v in row]
-        out.append("| " + " | ".join(c.replace("|", "\\|").replace("\n", " ")[:80] for c in cells) + " |")
+        cells = [_html_to_text(str(v)) if v is not None else "" for v in row]
+        # A pipe-table cell is multi-line and large -> expand as its own block.
+        rich_idx = [i for i, c in enumerate(cells) if "\n" in c and len(c) > 120]
+        if rich_idx:
+            summary_parts = [
+                f"**{cols[i]}**: {c.replace(chr(10), ' ').strip()[:120]}"
+                for i, c in enumerate(cells) if i not in rich_idx
+            ]
+            if summary_parts:
+                out.append("\n- " + " · ".join(summary_parts))
+            for i in rich_idx:
+                out.append(f"\n**{cols[i]}:**\n\n{cells[i]}")
+        else:
+            out.append("| " + " | ".join(c.replace("|", "\\|").replace("\n", " ")[:4000] for c in cells) + " |")
     if len(rows) > cap:
         out.append(f"\n_(Total {len(rows)} rows, pehli {cap} dikhai gayi hain.)_")
     return "\n".join(out)
