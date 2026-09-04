@@ -5135,10 +5135,23 @@ def _append_answer_footer(text, agent=None, source=None):
 
 def _local_reply_text(best, terms=None, user_name=None, first_message=False):
     # Only show entries whose text actually contains the query terms —
-    # avoids showing irrelevant notes (e.g. Vitamin D note when user asked about 85025).
+    # avoids showing irrelevant notes (e.g. Vitamin D note when user asked about 84153).
+    # The PRIMARY term is the most discriminating one (appears in the fewest
+    # matching entries — e.g. the CPT code 84153 rather than a common word like
+    # "denied"), and entries containing it rank first.
     if terms:
         relevant = [h for h in best if any(t in (h["entry"].get("text") or "").lower() for t in terms)]
-        shown = relevant[:2] if relevant else best[:1]
+        if relevant:
+            primary = min(
+                terms,
+                key=lambda t: sum(t in (h["entry"].get("text") or "").lower() for h in relevant),
+            )
+            primary_hits = [h for h in relevant if primary in (h["entry"].get("text") or "").lower()]
+            # If the most specific term has real hits, show ONLY those (avoids
+            # dumping unrelated notes that merely share a common word).
+            shown = (primary_hits[:2] if primary_hits else relevant[:2])
+        else:
+            shown = best[:1]
     else:
         shown = best[:2]
     lines = []
@@ -5148,8 +5161,6 @@ def _local_reply_text(best, terms=None, user_name=None, first_message=False):
         label = f"{APP_SOURCE_LABELS.get(e['kind'], 'Guideline')}: {e['title']}"
         if e["kind"] == "guideline" and e["tag"]:
             label += f" ({e['tag']})"
-        # For table data: show full snippet (header + matching rows) as-is.
-        # For plain text: show as before.
         lines.append(f"**{label}**\n{snippet}" if snippet else f"**{label}**")
     greet = f"{_greeting()}, {user_name}!\n\n" if first_message and user_name else ""
     return greet + "\n\n".join(lines)
@@ -5192,6 +5203,14 @@ def hybrid_answer(question, user_name=None, first_message=False, agent_prompt=""
     terms = _query_terms(question)
     provider = _chat_provider(question)
     promote_history = _recent_history(sid)
+    # Re-rank: entries where the PRIMARY term appears head the context. The
+    # primary term is the most discriminating one (lowest doc frequency across
+    # the matches) — e.g. CPT 84153 rather than a common word like "denied".
+    if terms and best:
+        text_by = lambda h: (h["entry"].get("text") or "").lower()
+        df = lambda t: sum(t in text_by(h) for h in best)
+        primary = min(terms, key=df) if best else terms[0]
+        best = sorted(best, key=lambda h: primary not in text_by(h))
     if not _provider_key(provider):
         if best:
             return _local_reply_text(best, terms, user_name, first_message), "local_rag"
