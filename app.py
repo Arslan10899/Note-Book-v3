@@ -449,6 +449,7 @@ CREATE TABLE IF NOT EXISTS users (
     password_hash TEXT NOT NULL,
     display_name TEXT NOT NULL DEFAULT '',
     role TEXT NOT NULL DEFAULT 'user',
+    avatar TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT ''
 );
 CREATE TABLE IF NOT EXISTS note_shares (
@@ -617,6 +618,9 @@ def migrate_db():
         kb_cols = [r[1] for r in conn.execute("PRAGMA table_info(knowledge_base)").fetchall()]
         if "created_by" not in kb_cols:
             conn.execute("ALTER TABLE knowledge_base ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
+        user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
+        if "avatar" not in user_cols:
+            conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
         conn.executescript(
             """
             CREATE INDEX IF NOT EXISTS idx_tasks_page_id ON tasks(page_id);
@@ -866,6 +870,7 @@ def public_user(row):
         "username": row["username"],
         "display_name": row["display_name"] or row["username"],
         "role": row["role"],
+        "avatar": row["avatar"] or "",
         "created_at": row["created_at"],
     }
 
@@ -5656,13 +5661,22 @@ def auth_update_profile():
     username = (data.get("username") or u["username"]).strip().lower()
     if not re.fullmatch(r"[a-z0-9_.]{3,24}", username):
         return jsonify({"error": "Username: 3-24 chars, letters/numbers/._ only"}), 400
+    if "avatar" in data:
+        avatar = str(data.get("avatar") or "").strip()
+        if avatar:
+            try:
+                avatar = _process_avatar(avatar)
+            except ValueError as ex:
+                return jsonify({"error": str(ex)}), 400
+    else:
+        avatar = u["avatar"] or ""
     conn = get_db()
     try:
         if username != u["username"]:
             dup = conn.execute("SELECT id FROM users WHERE username = ? AND id != ?", (username, u["id"])).fetchone()
             if dup:
                 return jsonify({"error": "Username already taken"}), 400
-        conn.execute("UPDATE users SET username = ?, display_name = ? WHERE id = ?", (username, display_name, u["id"]))
+        conn.execute("UPDATE users SET username = ?, display_name = ?, avatar = ? WHERE id = ?", (username, display_name, avatar, u["id"]))
         conn.commit()
         row = conn.execute("SELECT * FROM users WHERE id = ?", (u["id"],)).fetchone()
     finally:
@@ -7279,6 +7293,43 @@ def compress_image(file_storage):
     img.save(buf, format="JPEG", quality=82, optimize=True)
     buf.seek(0)
     return buf.read()
+
+
+AVATAR_DATA_URL_RE = re.compile(r"^data:image/(?:png|jpeg|webp|gif);base64,", re.I)
+AVATAR_MAX_SIZE = 1024 * 1024  # 1 MB of raw image data
+AVATAR_OUTPUT = 512  # resized to this longest edge, re-encoded as JPEG
+
+
+def _process_avatar(data_url):
+    """Validate + normalize a profile-avatar data URL. Returns a small JPEG
+    data URL (data:image/jpeg;base64,...) or raises ValueError on bad input.
+    Empty string clears the avatar; None keeps the existing one."""
+    m = AVATAR_DATA_URL_RE.match(data_url or "")
+    if not m:
+        raise ValueError("Avatar must be a PNG/JPG/WebP/GIF image")
+    try:
+        raw = base64.b64decode(data_url[m.end():], validate=True)
+    except Exception:
+        raise ValueError("Avatar data is corrupt")
+    if not raw or len(raw) > AVATAR_MAX_SIZE:
+        raise ValueError("Avatar file too large (max 1 MB)")
+    kind, _ = _classify_chat_file(raw, "avatar")
+    if kind != "image":
+        raise ValueError("Avatar must be a valid PNG, JPG, WebP or GIF image")
+    img = Image.open(BytesIO(raw))
+    img.load()
+    if img.mode in ("RGBA", "LA", "P"):
+        img = img.convert("RGBA")
+        bg = Image.new("RGB", img.size, (255, 255, 255))
+        bg.paste(img, mask=img.split()[-1])
+        img = bg
+    else:
+        img = img.convert("RGB")
+    if max(img.size) > AVATAR_OUTPUT:
+        img.thumbnail((AVATAR_OUTPUT, AVATAR_OUTPUT), Image.LANCZOS)
+    buf = BytesIO()
+    img.save(buf, format="JPEG", quality=80, optimize=True)
+    return "data:image/jpeg;base64," + base64.b64encode(buf.getvalue()).decode()
 
 
 @app.get("/api/pages")

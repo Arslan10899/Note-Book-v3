@@ -703,7 +703,7 @@ input[type="color"] {
   background: hsl(var(--secondary) / 0.45);
 }
 
-/* Sidebar 3-step theme switch — modern sliding-thumb segmented control */
+/* Sidebar 3-step theme switch — full sidebar: sliding-thumb segmented control */
 .sst-track {
   position: relative;
   display: grid;
@@ -758,26 +758,71 @@ input[type="color"] {
   letter-spacing: 0.02em;
   line-height: 1;
 }
-.dark #sidebar-theme-toggle,
-.bento #sidebar-theme-toggle {
+.dark #theme-switch-full,
+.bento #theme-switch-full {
   border-color: rgb(255 255 255 / 0.14);
   background: rgb(255 255 255 / 0.08);
   box-shadow: inset 0 1px 2px rgb(0 0 0 / 0.25);
 }
-.dark #sidebar-theme-toggle .sst-thumb,
-.bento #sidebar-theme-toggle .sst-thumb {
+.dark #theme-switch-full .sst-thumb,
+.bento #theme-switch-full .sst-thumb {
   background: rgb(255 255 255 / 0.16);
   box-shadow: 0 1px 4px rgb(0 0 0 / 0.35);
 }
-.dark #sidebar-theme-toggle .sst-seg,
-.bento #sidebar-theme-toggle .sst-seg {
+.dark #theme-switch-full .sst-seg,
+.bento #theme-switch-full .sst-seg {
   color: rgb(255 255 255 / 0.5);
 }
-.dark #sidebar-theme-toggle .sst-seg:hover,
-.bento #sidebar-theme-toggle .sst-seg:hover,
-.dark #sidebar-theme-toggle .sst-seg.active,
-.bento #sidebar-theme-toggle .sst-seg.active {
+.dark #theme-switch-full .sst-seg:hover,
+.bento #theme-switch-full .sst-seg:hover,
+.dark #theme-switch-full .sst-seg.active,
+.bento #theme-switch-full .sst-seg.active {
   color: #fff;
+}
+
+/* Mini (collapsed) sidebar: show single cycle button, hide 3-step switch */
+@media (min-width: 768px) {
+  body.sidebar-mini #theme-switch-full {
+    display: none;
+  }
+  body.sidebar-mini #theme-switch-mini {
+    display: flex;
+  }
+  body:not(.sidebar-mini) #theme-switch-mini {
+    display: none;
+  }
+}
+
+/* Recent-notes pager on the dashboard */
+.pager-btn {
+  min-width: 24px;
+  height: 24px;
+  padding: 0 4px;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  color: hsl(var(--muted-foreground));
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  transition: background 150ms ease, color 150ms ease;
+}
+.pager-btn:hover:not(:disabled):not(.active) {
+  background: hsl(var(--accent));
+  color: hsl(var(--foreground));
+}
+.pager-btn.active {
+  background: hsl(var(--primary));
+  color: hsl(var(--primary-foreground));
+}
+.pager-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.pager-dots {
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+  padding: 0 2px;
 }
 
 /* Editor overlay: tighter margins (~40% less) + larger editing window.
@@ -1317,6 +1362,15 @@ input[type="color"] {
   border-radius: 999px;
   color: #fff;
   background: linear-gradient(135deg, hsl(var(--primary)), hsl(265 80% 60%));
+  overflow: hidden;
+  flex-shrink: 0;
+}
+.user-avatar img {
+  display: block;
+  width: 100%;
+  height: 100%;
+  border-radius: 999px;
+  object-fit: cover;
 }
 #user-menu button {
   display: block;
@@ -1511,11 +1565,6 @@ input[type="color"] {
   body.sidebar-mini .nav-link > span,
   body.sidebar-mini #theme-label {
     display: none;
-  }
-  body.sidebar-mini #sidebar-theme-toggle {
-    justify-content: center;
-    padding-left: 0;
-    padding-right: 0;
   }
   body.sidebar-mini main.md\:ml-60,
   body.sidebar-mini div.md\:ml-60 {

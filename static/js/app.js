@@ -17,6 +17,7 @@ const state = {
   editorKind: "note",
   currentPageId: null,
   returnTo: null,
+  recentNotesPage: 0,
   schedWd: (new Date().getDay() + 6) % 7,
   calY: new Date().getFullYear(),
   calM: new Date().getMonth(),
@@ -211,9 +212,12 @@ function syncThemeUI() {
   $("#icon-sun")?.classList.toggle("hidden", dark || bento);
   $("#icon-bento")?.classList.toggle("hidden", !bento);
   const active = dark ? "dark" : bento ? "bento" : "light";
-  const sst = $("#sidebar-theme-toggle");
+  const sst = $("#theme-switch-full");
   if (sst) sst.dataset.act = active;
   $$(".sst-seg").forEach((b) => b.classList.toggle("active", b.dataset.seqTheme === active));
+  $("#sb-icon-moon")?.classList.toggle("hidden", !dark);
+  $("#sb-icon-sun")?.classList.toggle("hidden", dark || bento);
+  $("#sb-icon-bento")?.classList.toggle("hidden", !bento);
 }
 
 function setRoute(h) {
@@ -795,9 +799,23 @@ function initialsOf(name) {
     .toUpperCase();
 }
 
+function renderAvatar(el, u) {
+  if (!el) return;
+  el.innerHTML = "";
+  el.classList.remove("no-img");
+  if (u && u.avatar) {
+    el.style.background = "";
+    el.innerHTML = `<img src="${u.avatar}" alt="">`;
+  } else {
+    el.style.background = "";
+    el.classList.add("no-img");
+    el.textContent = initialsOf((u && u.display_name) || "U");
+  }
+}
+
 function updateUserChip(u) {
   if (!u) return;
-  $("#user-avatar").textContent = initialsOf(u.display_name);
+  renderAvatar($("#user-avatar"), u);
   $("#user-name").textContent = u.display_name;
   $("#user-role").textContent = u.role;
   $("#menu-display-name").textContent = u.display_name;
@@ -980,16 +998,32 @@ function wireUserMenu() {
 
 function profileDialog() {
   const u = state.user;
+  let pendingAvatar = null;
+  const syncAvatarUI = () => {
+    renderAvatar($("#pf-avatar"), pendingAvatar === null ? u : { display_name: u.display_name, avatar: pendingAvatar });
+    $("#pf-remove").classList.toggle("hidden", pendingAvatar === null && !u.avatar);
+  };
   openDialog(`
-    <h2 class="text-lg font-semibold">My Profile</h2>
+    <div class="flex items-start justify-between gap-3">
+      <h2 class="text-lg font-semibold">My Profile</h2>
+      <button type="button" class="rounded-md p-1 text-muted-foreground hover:bg-accent hover:text-foreground" data-close-x aria-label="Close">
+        <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 6 6 18"/><path d="m6 6 12 12"/></svg>
+      </button>
+    </div>
     <div class="mt-4 flex items-center gap-3 rounded-xl border border-border p-3">
-      <span class="user-avatar" style="width:44px;height:44px;font-size:16px;">${initialsOf(u.display_name)}</span>
+      <span id="pf-avatar" class="user-avatar" style="width:56px;height:56px;font-size:20px;"></span>
       <div class="min-w-0">
         <p class="truncate text-sm font-semibold">${escapeHtml(u.display_name)}</p>
         <p class="text-xs text-muted-foreground">@${escapeHtml(u.username)} · Member since ${fmtStampFull(u.created_at)}</p>
         <span class="role-badge ${u.role} mt-1 inline-block">${u.role}</span>
       </div>
     </div>
+    <div class="mt-3 flex flex-wrap items-center gap-2">
+      <button type="button" class="btn btn-secondary btn-sm" id="pf-pick">Change photo</button>
+      <button type="button" class="btn btn-ghost btn-sm text-destructive" id="pf-remove">Remove photo</button>
+      <input id="pf-file" type="file" accept="image/png,image/jpeg,image/webp,image/gif" class="hidden" />
+    </div>
+    <p class="mt-1.5 text-[11px] text-muted-foreground">PNG / JPG / WebP / GIF. Photo is auto-resized (max 512px) and stored privately on this server.</p>
     <div class="mt-4 space-y-3">
       <label class="block text-xs font-semibold">Display name
         <input id="pf-display" class="input mt-1 w-full" maxlength="60" value="${escapeHtml(u.display_name)}" />
@@ -1004,12 +1038,50 @@ function profileDialog() {
       <button type="button" class="btn btn-primary" id="pf-save">Save Changes</button>
     </div>
   `);
+  syncAvatarUI();
   $("[data-cancel-dialog]").addEventListener("click", closeDialog);
+  $("#dialog-root [data-close-x]").addEventListener("click", closeDialog);
+  $("#pf-pick").addEventListener("click", () => $("#pf-file").click());
+  $("#pf-file").addEventListener("change", (e) => {
+    const file = e.target.files && e.target.files[0];
+    if (!file) return;
+    const isImage = /^image\//i.test(file.type) || /\.(png|jpe?g|webp|gif)$/i.test(file.name);
+    if (!isImage) return toast("PNG / JPG / WebP / GIF images only", "error");
+    if (file.size > 20 * 1024 * 1024) return toast("Image too large", "error");
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const scale = Math.min(1, 512 / Math.max(img.naturalWidth, img.naturalHeight));
+        const w = Math.max(1, Math.round(img.naturalWidth * scale));
+        const h = Math.max(1, Math.round(img.naturalHeight * scale));
+        const canvas = document.createElement("canvas");
+        canvas.width = w;
+        canvas.height = h;
+        const g = canvas.getContext("2d");
+        g.fillStyle = "#fff";
+        g.fillRect(0, 0, w, h);
+        g.drawImage(img, 0, 0, w, h);
+        pendingAvatar = canvas.toDataURL("image/jpeg", 0.85);
+        syncAvatarUI();
+      };
+      img.onerror = () => toast("Could not read that image file", "error");
+      img.src = ev.target.result;
+    };
+    reader.readAsDataURL(file);
+    e.target.value = "";
+  });
+  $("#pf-remove").addEventListener("click", () => {
+    pendingAvatar = "";
+    syncAvatarUI();
+  });
   $("#pf-save").addEventListener("click", async () => {
     try {
+      const body = { display_name: $("#pf-display").value, username: $("#pf-username").value };
+      if (pendingAvatar !== null) body.avatar = pendingAvatar;
       state.user = await api("/api/auth/profile", {
         method: "PUT",
-        body: JSON.stringify({ display_name: $("#pf-display").value, username: $("#pf-username").value }),
+        body: JSON.stringify(body),
       });
       updateUserChip(state.user);
       closeDialog();
@@ -2913,7 +2985,7 @@ function renderChart() {
   });
   const avg = Math.round(days.reduce((s, d) => s + d.pct, 0) / 7);
   const chart = `
-    <svg width="330" height="330" viewBox="0 0 350 330">
+    <svg width="250" height="235" viewBox="0 0 350 330">
       <defs>${defs}</defs>
       ${groups}
       <text x="${cx}" y="${cy - 4}" text-anchor="middle" style="fill:hsl(var(--foreground));font-size:38px;font-weight:700;">${avg}%</text>
@@ -2942,13 +3014,39 @@ function renderChart() {
   pill.classList.remove("hidden");
 }
 
+function buildRecentNotesPager(pages, cur) {
+  const seg = (label, page, disabled = false) =>
+    `<button type="button" class="pager-btn${page === cur ? " active" : ""}" data-np="${page}" ${disabled ? "disabled" : ""}>${label}</button>`;
+  const nums = [];
+  for (let i = 0; i < pages; i++) if (i === 0 || i === pages - 1 || Math.abs(i - cur) <= 1) nums.push(i);
+  let html = seg("‹", cur - 1, cur <= 0);
+  let prev = null;
+  nums.forEach((i) => {
+    if (prev !== null && i - prev > 1) html += `<span class="pager-dots">…</span>`;
+    html += seg(String(i + 1), i);
+    prev = i;
+  });
+  html += seg("›", cur + 1, cur >= pages - 1);
+  return html;
+}
+
 function renderRecentNotes() {
   const box = $("#recent-notes");
-  const items = [...state.notes].sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || "")).slice(0, 5);
-  if (!items.length) {
+  const pager = $("#recent-notes-pager");
+  const sorted = [...state.notes].sort((a, b) => (b.updated_at || "").localeCompare(a.updated_at || ""));
+  const perPage = 4;
+  const pages = Math.max(1, Math.ceil(sorted.length / perPage));
+  if (!sorted.length) {
     box.innerHTML = `<p class="p-4 text-sm text-muted-foreground">No notes yet</p>`;
+    if (pager) {
+      pager.classList.add("hidden");
+      pager.innerHTML = "";
+    }
     return;
   }
+  if (state.recentNotesPage >= pages) state.recentNotesPage = pages - 1;
+  if (state.recentNotesPage < 0) state.recentNotesPage = 0;
+  const items = sorted.slice(state.recentNotesPage * perPage, state.recentNotesPage * perPage + perPage);
   box.innerHTML = items
     .map(
       (n) => `
@@ -2971,6 +3069,12 @@ function renderRecentNotes() {
       openViewer(id);
     });
   });
+  if (pager) {
+    pager.classList.toggle("hidden", pages <= 1);
+    if (pages > 1) pager.classList.add("flex");
+    if (pages <= 1) pager.classList.remove("flex");
+    pager.innerHTML = buildRecentNotesPager(pages, state.recentNotesPage);
+  }
 }
 
 function renderTodayTasks() {
@@ -7135,7 +7239,16 @@ function initApp() {
   $("#sidebar-overlay").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
 
   $$(".sst-seg").forEach((b) => b.addEventListener("click", () => applyTheme(b.dataset.seqTheme)));
+  const miniTheme = $("#theme-switch-mini");
+  if (miniTheme) miniTheme.addEventListener("click", () => applyTheme(nextTheme()));
   $("#header-theme-toggle").addEventListener("click", () => applyTheme(nextTheme()));
+  const recentPager = $("#recent-notes-pager");
+  if (recentPager) recentPager.addEventListener("click", (e) => {
+    const b = e.target.closest("[data-np]");
+    if (!b || b.disabled) return;
+    state.recentNotesPage = Number(b.dataset.np);
+    renderRecentNotes();
+  });
   $("#theme-dark-btn").addEventListener("click", () => applyTheme("dark"));
   $("#theme-light-btn").addEventListener("click", () => applyTheme("light"));
   $("#theme-bento-btn").addEventListener("click", () => applyTheme("bento"));

@@ -1,4 +1,4 @@
-﻿<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="en" class="dark">
 <head>
   <meta charset="UTF-8" />
@@ -121,13 +121,14 @@
     </nav>
 
     <div class="border-t border-border p-3">
-      <div id="sidebar-theme-toggle" class="sst-track" role="group" aria-label="Theme" title="Theme — Light / Bento / Dark">
+      <!-- Full sidebar: 3-step sliding switch -->
+      <div id="theme-switch-full" class="sst-track" role="group" aria-label="Theme" title="Theme — Light / Color / Dark">
         <span class="sst-thumb"></span>
         <button type="button" class="sst-seg" data-seq-theme="light" title="Light mode">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="#F5B301" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" fill="#FBBF24" stroke="none"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
           <span class="sst-label">Light</span>
         </button>
-        <button type="button" class="sst-seg" data-seq-theme="bento" title="Bento mode (colorful)">
+        <button type="button" class="sst-seg" data-seq-theme="bento" title="Color mode">
           <svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" fill="#EBDBA6"/><rect x="14" y="3" width="7" height="7" rx="1" fill="#E4B6C2"/><rect x="3" y="14" width="7" height="7" rx="1" fill="#B7D2E5"/><rect x="14" y="14" width="7" height="7" rx="1" fill="#BED0A8"/></svg>
           <span class="sst-label">Color</span>
         </button>
@@ -136,6 +137,12 @@
           <span class="sst-label">Dark</span>
         </button>
       </div>
+      <!-- Mini sidebar: single cycle icon button -->
+      <button id="theme-switch-mini" class="hidden w-full items-center justify-center rounded-lg border border-border bg-background/40 p-2 text-muted-foreground transition-colors hover:bg-accent hover:text-foreground" title="Change theme">
+        <svg id="sb-icon-sun" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#F5B301" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4" fill="#FBBF24" stroke="none"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        <svg id="sb-icon-bento" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1" fill="#EBDBA6"/><rect x="14" y="3" width="7" height="7" rx="1" fill="#E4B6C2"/><rect x="3" y="14" width="7" height="7" rx="1" fill="#B7D2E5"/><rect x="14" y="14" width="7" height="7" rx="1" fill="#BED0A8"/></svg>
+        <svg id="sb-icon-moon" class="hidden" xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3a6 6 0 0 0 9 9 9 9 0 1 1-9-9Z"/></svg>
+</button>
     </div>
   </aside>
 
@@ -252,13 +259,13 @@
               </div>
               <span id="rings-center-pill" class="badge badge-secondary hidden sm:inline-flex">Today</span>
             </div>
-            <div class="flex flex-col items-center gap-4 p-5 sm:flex-row">
+            <div class="flex flex-col items-center gap-4 p-4 sm:flex-row">
               <div id="rings-chart" class="mx-auto shrink-0"></div>
-              <div id="rings-breakdown" class="w-full space-y-2"></div>
+              <div id="rings-breakdown" class="w-full space-y-1"></div>
             </div>
           </div>
 
-          <div class="card xl:col-span-2">
+          <div class="card flex flex-col xl:col-span-2">
             <div class="card-header">
               <div>
                 <h3 class="card-title">Recent Notes</h3>
@@ -266,7 +273,8 @@
               </div>
               <button class="btn btn-ghost btn-sm" data-goto="notes">View all</button>
             </div>
-            <div id="recent-notes" class="space-y-1 p-2 pt-0"></div>
+            <div id="recent-notes" class="min-h-0 space-y-0.5 overflow-y-auto p-2 pt-0"></div>
+            <div id="recent-notes-pager" class="mt-auto hidden justify-center gap-0.5 px-2 pb-1.5"></div>
           </div>
         </div>
 

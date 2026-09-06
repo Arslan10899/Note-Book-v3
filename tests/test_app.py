@@ -90,6 +90,31 @@ class TestAuth(BaseTest):
         self.assertEqual(r.status_code, 429)
         app_module._failed_attempts.clear()
 
+    def _tiny_png_data_url(self):
+        # 1x1 red PNG
+        png = base64.b64decode(
+            "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mP8z8BQDwAEhQGAhKmMIQAAAABJRU5ErkJggg=="
+        )
+        return "data:image/png;base64," + base64.b64encode(png).decode()
+
+    def test_profile_avatar_roundtrip(self):
+        self.register()
+        bad = self.client.put("/api/auth/profile", json={"avatar": "data:image/svg+xml;base64,PHN2Zz48L3N2Zz4="})
+        self.assertEqual(bad.status_code, 400)
+        ok = self.client.put("/api/auth/profile", json={"avatar": self._tiny_png_data_url()})
+        self.assertEqual(ok.status_code, 200)
+        avatar = ok.get_json().get("avatar") or ""
+        self.assertTrue(avatar.startswith("data:image/jpeg;base64,"), avatar[:40])
+        me = self.client.get("/api/auth/me").get_json()
+        self.assertEqual(me["avatar"], avatar)
+        cleared = self.client.put("/api/auth/profile", json={"avatar": ""})
+        self.assertEqual(cleared.status_code, 200)
+        self.assertEqual(cleared.get_json()["avatar"], "")
+        # avatar untouched when the field is omitted
+        self.client.put("/api/auth/profile", json={"avatar": self._tiny_png_data_url()})
+        renamed = self.client.put("/api/auth/profile", json={"username": "tester"})
+        self.assertTrue(renamed.get_json()["avatar"].startswith("data:image/jpeg;base64,"))
+
 
 class TestTasks(BaseTest):
     def setUp(self):
