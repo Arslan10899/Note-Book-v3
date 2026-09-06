@@ -142,19 +142,21 @@ function closeDialog() {
 }
 
 function confirmDialog(message, onOk, okLabel = "Delete") {
+  const safeMsg = escapeHtml(message);
+  const safeLabel = escapeHtml(okLabel);
   openDialog(`
     <div class="flex items-start gap-3">
       <div class="mt-0.5 rounded-full bg-destructive/15 p-2 text-destructive">
         <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3"/><path d="M12 9v4"/><path d="M12 17h.01"/></svg>
       </div>
       <div>
-        <h3 class="text-base font-semibold">${message}</h3>
+        <h3 class="text-base font-semibold">${safeMsg}</h3>
         <p class="mt-1 text-sm text-muted-foreground">This action cannot be undone.</p>
       </div>
     </div>
     <div class="mt-5 flex justify-end gap-2">
       <button type="button" class="btn btn-outline" id="confirm-cancel">Cancel</button>
-      <button type="button" class="btn btn-destructive" id="confirm-ok">${okLabel}</button>
+      <button type="button" class="btn btn-destructive" id="confirm-ok">${safeLabel}</button>
     </div>
   `);
   $("#confirm-cancel").addEventListener("click", closeDialog);
@@ -167,8 +169,17 @@ function confirmDialog(message, onOk, okLabel = "Delete") {
 function applyTheme(theme) {
   localStorage.setItem("theme", theme);
   document.documentElement.classList.toggle("dark", theme === "dark");
+  document.documentElement.classList.toggle("bento", theme === "bento");
   syncThemeUI();
   neutralizeNoteTextColors();
+}
+
+// Cycle used by the header/sidebar theme toggles: dark -> light -> bento -> dark.
+function nextTheme() {
+  const doc = document.documentElement;
+  if (doc.classList.contains("dark")) return "light";
+  if (doc.classList.contains("bento")) return "dark";
+  return "bento";
 }
 
 // Dark mode: note rich-text often carries near-black inline text colour
@@ -195,12 +206,15 @@ function neutralizeNoteTextColors(root = document) {
 
 function syncThemeUI() {
   const dark = document.documentElement.classList.contains("dark");
+  const bento = document.documentElement.classList.contains("bento");
   $("#icon-moon")?.classList.toggle("hidden", !dark);
-  $("#icon-sun")?.classList.toggle("hidden", dark);
+  $("#icon-sun")?.classList.toggle("hidden", dark || bento);
+  $("#icon-bento")?.classList.toggle("hidden", !bento);
   $("#sb-icon-moon")?.classList.toggle("hidden", !dark);
-  $("#sb-icon-sun")?.classList.toggle("hidden", dark);
+  $("#sb-icon-sun")?.classList.toggle("hidden", dark || bento);
+  $("#sb-icon-bento")?.classList.toggle("hidden", !bento);
   const label = $("#theme-label");
-  if (label) label.textContent = dark ? "Dark mode" : "Light mode";
+  if (label) label.textContent = dark ? "Dark mode" : bento ? "Bento mode" : "Light mode";
 }
 
 function setRoute(h) {
@@ -798,7 +812,7 @@ function updateUserChip(u) {
 
 function showAuthScreen() {
   $("#auth-overlay").classList.remove("hidden");
-  const err = (formSel, msg) => {
+  const showAuthError = (formSel, msg) => {
     const el = $(`${formSel} .auth-error`);
     el.textContent = msg;
     el.classList.remove("hidden");
@@ -823,15 +837,15 @@ function showAuthScreen() {
         }),
       });
       afterAuthSuccess();
-    } catch (err) {
-      err("#auth-form-login", err.message);
+    } catch (e) {
+      showAuthError("#auth-form-login", e.message);
     }
   });
 
   $("#auth-form-register").addEventListener("submit", async (e) => {
     e.preventDefault();
     if ($("#reg-password").value !== $("#reg-confirm").value) {
-      return err("#auth-form-register", "Passwords do not match");
+      return showAuthError("#auth-form-register", "Passwords do not match");
     }
     try {
       state.user = await api("/api/auth/register", {
@@ -843,8 +857,8 @@ function showAuthScreen() {
         }),
       });
       afterAuthSuccess();
-    } catch (err) {
-      err("#auth-form-register", err.message);
+    } catch (e) {
+      showAuthError("#auth-form-register", e.message);
     }
   });
 }
@@ -3003,13 +3017,17 @@ function bindTaskToggles(scope) {
       if (!requireWrite("mark tasks done")) return;
       const id = Number(b.dataset.toggle);
       const task = state.tasks.find((t) => t.id === id);
-      const updated = await api(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ done: !task.done }) });
-      Object.assign(task, updated);
-      if (state.view === "dashboard") {
-        renderTodayTasks();
-        $("#stat-pending").textContent = state.tasks.filter((t) => !t.done).length;
-      } else renderTasks();
-      toast(updated.done ? "Task completed ✓" : "Marked pending");
+      try {
+        const updated = await api(`/api/tasks/${id}`, { method: "PATCH", body: JSON.stringify({ done: !task.done }) });
+        Object.assign(task, updated);
+        if (state.view === "dashboard") {
+          renderTodayTasks();
+          $("#stat-pending").textContent = state.tasks.filter((t) => !t.done).length;
+        } else renderTasks();
+        toast(updated.done ? "Task completed ✓" : "Marked pending");
+      } catch (err) {
+        toast(err.message, "error");
+      }
     })
   );
 }
@@ -3020,21 +3038,26 @@ function bindRoutineToggles(scope) {
       if (!requireWrite("mark routines done")) return;
       const id = Number(b.dataset.routineToggle);
       const d = b.dataset.date;
-      const res = await api(`/api/routines/${id}/toggle`, { method: "POST", body: JSON.stringify({ date: d }) });
-      const r = state.routines.find((x) => x.id === id);
-      if (r) {
-        r.completions = r.completions || [];
-        r.completions = res.done ? [...new Set([...r.completions, d])] : r.completions.filter((x) => x !== d);
+      try {
+        const res = await api(`/api/routines/${id}/toggle`, { method: "POST", body: JSON.stringify({ date: d }) });
+        const r = state.routines.find((x) => x.id === id);
+        if (r) {
+          r.completions = r.completions || [];
+          r.completions = res.done ? [...new Set([...r.completions, d])] : r.completions.filter((x) => x !== d);
+        }
+        if (state.view === "dashboard") loadDashboard();
+        else renderSchedList();
+        toast(res.done ? "Routine done ✓" : "Undone");
+      } catch (err) {
+        toast(err.message, "error");
       }
-      if (state.view === "dashboard") loadDashboard();
-      else renderSchedList();
-      toast(res.done ? "Routine done ✓" : "Undone");
     })
   );
 }
 
 function priorityBadge(p) {
-  return `<span class="badge badge-${p}">${p}</span>`;
+  const safe = ["low", "medium", "high"].includes(p) ? p : "medium";
+  return `<span class="badge badge-${safe}">${escapeHtml(safe)}</span>`;
 }
 
 function dueChip(t) {
@@ -4351,7 +4374,8 @@ function chatSetBusy(busy) {
 
 async function loadChat() {
   try {
-    chatSessions = await api("/api/chat/sessions");
+    const res = await api("/api/chat/sessions");
+    chatSessions = Array.isArray(res) ? res : (res?.sessions || []);
   } catch (e) {
     toast(e.message, "error");
     return;
@@ -4503,7 +4527,11 @@ async function chatSend() {
   let streamUrl = `/api/chat/sessions/${encodeURIComponent(sid)}/stream?q=${encodeURIComponent(text)}&p=${encodeURIComponent(JSON.stringify(getPortals()))}`;
   if (attTokens.length) streamUrl += `&a=${encodeURIComponent(JSON.stringify(attTokens))}`;
   const es = new EventSource(streamUrl);
+  let streamTimeout = setTimeout(() => {
+    if (!done) finish("Response timed out. Dobara try karain.");
+  }, 120000);
   const finish = (userError) => {
+    clearTimeout(streamTimeout);
     es.close();
     done = true;
     chatMessages = chatMessages.filter((m) => !(m.id && String(m.id).startsWith("pending-")));
@@ -7031,10 +7059,11 @@ function initApp() {
   $("#sidebar-toggle").addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
   $("#sidebar-overlay").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
 
-  $("#sidebar-theme-toggle").addEventListener("click", () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark"));
-  $("#header-theme-toggle").addEventListener("click", () => applyTheme(document.documentElement.classList.contains("dark") ? "light" : "dark"));
+  $("#sidebar-theme-toggle").addEventListener("click", () => applyTheme(nextTheme()));
+  $("#header-theme-toggle").addEventListener("click", () => applyTheme(nextTheme()));
   $("#theme-dark-btn").addEventListener("click", () => applyTheme("dark"));
   $("#theme-light-btn").addEventListener("click", () => applyTheme("light"));
+  $("#theme-bento-btn").addEventListener("click", () => applyTheme("bento"));
   syncThemeUI();
 
   $$(".task-tab").forEach((tab) =>

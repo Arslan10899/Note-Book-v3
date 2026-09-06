@@ -1513,6 +1513,10 @@ _EMBED_COOLDOWN_SECONDS = 600
 # message (RAG node + answer) embed the question only once.
 _embed_cache = {}
 _EMBED_CACHE_CAP = 24
+# Consecutive embedding failures before we kill the layer (a single transient
+# network blip should not disable semantic search for 10 minutes).
+_embed_fail_count = 0
+_EMBED_FAIL_BEFORE_DEAD = 3
 
 
 def _embed_cooldown_active():
@@ -1592,7 +1596,7 @@ def _embed_one(text, provider):
 
 def _embed_text(text):
     """Try each usable provider in order until a vector comes back."""
-    global _embedding_disabled
+    global _embedding_disabled, _embed_fail_count
     if _embed_cooldown_active():
         _embedding_disabled = True
         return None
@@ -1606,14 +1610,19 @@ def _embed_text(text):
         vec = _embed_one(text, chosen)
         if vec:
             _embed_cache[key] = vec
+            _embed_fail_count = 0
             if len(_embed_cache) > _EMBED_CACHE_CAP:
                 for k in list(_embed_cache)[: len(_embed_cache) - _EMBED_CACHE_CAP]:
                     _embed_cache.pop(k, None)
             return vec
     except Exception:
         pass
-    _mark_embed_dead()
-    logger.warning("embeddings unavailable for provider %s — turning off semantic search for this session", chosen)
+    # Only disable the whole layer after N consecutive failures. A single
+    # timeout/DNS blip keeps semantic search available.
+    _embed_fail_count += 1
+    if _embed_fail_count >= _EMBED_FAIL_BEFORE_DEAD:
+        _mark_embed_dead()
+        logger.warning("embeddings unavailable for provider %s — turning off semantic search for this session", chosen)
     return None
 
 
@@ -1655,7 +1664,6 @@ def _ensure_embeddings():
                 # Provider just failed: don't stamp the digest (else a fixed
                 # provider would never re-embed), flip the cooldown, and bail.
                 _mark_embed_dead()
-                conn.close()
                 return False
             conn.execute(
                 "INSERT INTO embed_vectors (doc_key, kind, title, tag, text, content_hash, vector, provider, updated_at) "
@@ -1677,7 +1685,7 @@ def _ensure_embeddings():
         conn.close()
 
 
-def _semantic_search(question, limit=3):
+def _semantic_search(question, limit=3, scope=None):
     """Return semantically similar library entries (cosine over cached vectors)."""
     if _embedding_disabled:
         return []
@@ -1691,7 +1699,16 @@ def _semantic_search(question, limit=3):
         return []
     conn = get_db()
     try:
-        rows = conn.execute("SELECT kind, title, tag, text, vector FROM embed_vectors").fetchall()
+        # Filter by agent scope at the DB level so managers never even score
+        # guidelines/notes (fewer rows + no wasted cosine work).
+        if scope:
+            placeholders = ",".join("?" for _ in scope)
+            rows = conn.execute(
+                f"SELECT kind, title, tag, text, vector FROM embed_vectors WHERE kind IN ({placeholders})",
+                tuple(scope),
+            ).fetchall()
+        else:
+            rows = conn.execute("SELECT kind, title, tag, text, vector FROM embed_vectors").fetchall()
     finally:
         conn.close()
     scored = []
@@ -1746,7 +1763,7 @@ def _search_best(question, limit=4, agent=None):
             seen.add(key)
             merged.append(hit)
     try:
-        for hit in _semantic_search(question, limit):
+        for hit in _semantic_search(question, limit, scope=scope):
             e = hit["entry"]
             if not _keep_type(e):
                 continue
@@ -1967,19 +1984,40 @@ def _llm_prompt(provider, system, user, json_mode=False, attachments=None):
 
 
 def _extract_json(text):
+    import json as _json
     t = re.sub(r"```(?:json)?", "", text or "", flags=re.I).strip()
+    decoder = _json.JSONDecoder()
     s = t.find("{")
     if s == -1:
         raise ValueError("No JSON object in model output")
+    # String-aware scan: count braces but skip anything inside a JSON string
+    # (honouring escaped quotes) so braces inside values like "Projects {2025}"
+    # do not throw off the depth counter.
     depth = 0
-    for i in range(s, len(t)):
+    i = s
+    n = len(t)
+    in_str = False
+    while i < n:
         ch = t[i]
+        if in_str:
+            if ch == "\\":
+                i += 2  # skip the escaped character
+                continue
+            if ch == '"':
+                in_str = False
+            i += 1
+            continue
+        if ch == '"':
+            in_str = True
+            i += 1
+            continue
         if ch == "{":
             depth += 1
         elif ch == "}":
             depth -= 1
             if depth == 0:
                 return t[s : i + 1]
+        i += 1
     raise ValueError("Unbalanced JSON in model output")
 
 
@@ -2825,10 +2863,35 @@ _SAFE_SQL_TABLES = (
 )
 _SQL_DENY_RE = re.compile(
     r"\b(insert|update|delete|drop|alter|create|attach|detach|reindex|vacuum|replace|truncate|"
-    r"pragma|union|exec\b|execute|load_file)\b",
+    r"pragma\b|pragma_|union|exec\b|execute|load_file|readfile|writefile|"
+    r"begin|commit|rollback)\b",
     re.IGNORECASE,
 )
-_SQL_TABLE_RE = re.compile(r"\b(?:from|join)\s+([a-z][a-z0-9_]*)\b", re.IGNORECASE)
+# Table-ref scanner: yields every table/TVF name referenced after FROM/JOIN,
+# including comma-separated lists (`FROM tasks, sqlite_master`) and the call
+# form `pragma_table_info(...)`, so nothing can fall through the allowlist.
+# Each FROM/JOIN match grabs only the adjacent table list (name[, name]*),
+# stopping at the next clause; column/ORDER BY commas and nested subquery
+# aliases (`AS total_tasks, (SELECT ...)`) never leak into the refs.
+_SQL_TABLE_LIST_RE = re.compile(
+    r"\b(?:from|join)\s+"
+    r"([A-Za-z_][A-Za-z0-9_]*\s*(?:\([^)]*\))?)"
+    r"(?:\s*,\s*([A-Za-z_][A-Za-z0-9_]*\s*(?:\([^)]*\))?))*",
+    re.IGNORECASE,
+)
+_SQL_IDENT_RE = re.compile(r"[A-Za-z_][A-Za-z0-9_]*")
+
+
+def _sql_table_refs(sql):
+    """Return the set of lowercased table/TVF names referenced by FROM/JOIN."""
+    refs = set()
+    for m in _SQL_TABLE_LIST_RE.finditer(sql):
+        for g in m.groups():
+            if not g:
+                continue
+            name = _SQL_IDENT_RE.match(g).group(0).lower()
+            refs.add(name)
+    return refs
 
 
 def _sql_to_markdown(cols, rows, cap=25):
@@ -2871,7 +2934,7 @@ def _run_readonly_sql(query):
         raise ValueError("SQL tool: sirf SELECT-type read-only queries allowed hain.")
     if _SQL_DENY_RE.search(q):
         raise ValueError("SQL tool: ye query allow nahi hai (read-only mode).")
-    refs = set(m.group(1).lower() for m in _SQL_TABLE_RE.finditer(q))
+    refs = _sql_table_refs(q)
     blocked = refs - set(_SAFE_SQL_TABLES)
     if blocked:
         raise ValueError("SQL tool: table(s) allowlist mein nahi: " + ", ".join(sorted(blocked)) + ".")
@@ -2931,7 +2994,7 @@ def _run_agent_write_sql(query, created_by=""):
     if _WRITE_DENY_RE.search(q):
         raise ValueError("Memory tool: ye statement allow nahi hai (sirf agent_memory write).")
     if re.search(r"\bselect\b", q, re.IGNORECASE):
-        refs = set(m.group(1).lower() for m in _SQL_TABLE_RE.finditer(q))
+        refs = _sql_table_refs(q)
         bad = refs - {"chat_agents"}
         if bad:
             raise ValueError("Memory tool: subquery sirf chat_agents se name lookup ho sakta hai: " + ", ".join(sorted(bad)) + ".")
@@ -3087,18 +3150,32 @@ def _safe_upstream_host(url):
     if not host or host in ("localhost",) or host.endswith(".local") or host.endswith(".localhost"):
         return None
     import ipaddress
+    import socket
+    # Resolve to an explicit IP literal, or to ALL addresses for a hostname
+    # (getaddrinfo covers both IPv4 and IPv6, so an IPv6-private-only hostname
+    # can no longer slip past the gethostbyname/IPv4-only gap).
     try:
-        ip = ipaddress.ip_address(host)
+        ip = ipaddress.ip_address(host)  # already a literal like "10.0.0.1" or "::1"
+        ips = [ip]
     except ValueError:
-        ip = None
-    if ip is None:
+        ips = []
         try:
-            import socket
-            ip = ipaddress.ip_address(socket.gethostbyname(host))
+            for res in socket.getaddrinfo(host, None):
+                try:
+                    ips.append(ipaddress.ip_address(res[4][0]))
+                except ValueError:
+                    continue
         except Exception:
-            ip = None
-    if ip is not None and (ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast):
-        return None
+            ips = []
+        if not ips:
+            # Could not resolve to any safe, explicit address -> fail closed.
+            return None
+    for ip in ips:
+        if ip is None:
+            continue
+        # Reject if ANY resolved address is unsafe (prevents mixed A/AAAA tricks).
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved or ip.is_multicast:
+            return None
     return host
 
 
@@ -3126,9 +3203,20 @@ def _safe_fetch(tool_id, params=None):
         raise ValueError("API tool: is host/address ko call nahi kar sakte (internal/local blocked).")
     import urllib.request
     req = urllib.request.Request(url, headers={"User-Agent": "Mozilla/5.0 (PersonalAssistant)", "Accept": "application/json"})
+
+    class _NoRedirect(urllib.request.HTTPRedirectHandler):
+        def redirect_request(self, req, fp, code, msg, headers, newurl):
+            # Never follow HTTP redirects: each hop would need its own SSRF check.
+            raise urllib.error.HTTPError(newurl, code, "Redirects disabled (SSRF guard)", headers, fp)
+
+    opener = urllib.request.build_opener(_NoRedirect)
     try:
-        with urllib.request.urlopen(req, timeout=10) as resp:
+        with opener.open(req, timeout=10) as resp:
             raw = resp.read(200_000).decode("utf-8", "replace")
+    except urllib.error.HTTPError as e:
+        if e.code in (301, 302, 303, 307, 308):
+            raise ValueError("API tool: redirects allowed nahi (SSRF guard).")
+        raise ValueError("API tool: fetch failed (HTTP " + str(e.code) + ").")
     except Exception as e:
         raise ValueError("API tool: fetch failed (" + str(e) + ").")
     snippet = raw[:6000]
@@ -3193,10 +3281,15 @@ def _is_text_format(path):
         return False
     if ext in _FILE_TEXT_EXTS:
         return True
-    return True  # default to text for ordinary extensions
+    # Unknown / code / secret extensions are NOT treated as editable text. This
+    # prevents the agent from silently overwriting or re-reading arbitrary host
+    # files (e.g. .env, .py, .js, .key) as if they were plain text.
+    return False
 
 
 def _deletable(path):
+    if _is_sensitive_file(path):
+        return False
     low = (" " + path.lower() + " ").replace("\\", "/")
     for skip in ("/windows/", "program files", "system32", "/.ssh/", "//appdata//"):
         if skip in low:
@@ -3205,6 +3298,32 @@ def _deletable(path):
     if ext in _FILE_BINARY_DELETE_EXTS:
         return False
     return True
+
+
+_SENSITIVE_FILE_NAMES = (".env", "secret.key", ".gitconfig", ".netrc", ".htpasswd", "id_rsa", "id_dsa", "id_ed25519", "config.yml", "config.yaml", "settings.json", "appsettings.json")
+_SENSITIVE_DB_EXTS = (".db", ".sqlite", ".sqlite3", ".db-wal", ".db-shm", ".sqlite-wal", ".sqlite-shm")
+
+
+def _is_sensitive_file(path):
+    """True when a path is a server secret / DB snapshot / OS-critical file that
+    must never be read back to the browser or exposed on disk by the agent."""
+    if not path:
+        return True
+    try:
+        norm = os.path.abspath(os.path.normpath(path))
+    except Exception:
+        return True
+    low = norm.replace("\\", "/").lower()
+    name = os.path.basename(norm).lower()
+    if name in (n.lower() for n in _SENSITIVE_FILE_NAMES):
+        return True
+    ext = os.path.splitext(name)[1]
+    if ext in _SENSITIVE_DB_EXTS:
+        return True
+    for frag in ("/.ssh/", "/.git/", "/appdata/roaming/", "/windows/", "/system32/", "/program files/"):
+        if frag in low:
+            return True
+    return False
 
 
 def _file_badge(path):
@@ -3828,16 +3947,30 @@ def _run_file_action(decision):
     if op == "read":
         if not os.path.isfile(path):
             raise ValueError(f"File nahi mili: `{path}`.")
+        if _is_sensitive_file(path):
+            raise ValueError("Ye file read/display ke liye allow nahi hai (server/sensitive file).")
         return _read_file_display(path)
     if op == "create":
+        if _is_sensitive_file(path):
+            raise ValueError("Ye path sensitive/server file hai — write allowed nahi.")
         if os.path.exists(path) and not overwrite:
             raise ValueError(f"File pehle se maujood hai: `{path}`. Change/data add karna ho to 'update' use karein; replace karna ho to explicit 'overwrite: true' bhejein.")
         return _write_file(path, fi, True) + _file_badge(path)
     if op == "update":
+        if _is_sensitive_file(path):
+            raise ValueError("Ye path sensitive/server file hai — update allowed nahi.")
         if not os.path.exists(path):
             raise ValueError(f"File nahi mili update ke liye: `{path}`.")
         if not _is_text_format(path) and os.path.splitext(path)[1].lower() not in (".xlsx", ".docx"):
             raise ValueError("Update sirf text-logic files (.txt .md .log .csv .xlsx .docx) par allowed hai.")
+        umode = str(fi.get("mode") or "").strip().lower()
+        if umode not in ("append", "add", "replace", "overwrite"):
+            # Without an explicit merge/replace instruction this would silently
+            # wipe the existing content; refuse instead of losing data.
+            raise ValueError(
+                f"Update ke liye mode chahiye: 'append' (poori purani file add karo) ya 'replace' "
+                f"(poori file replace karo). File: `{path}`."
+            )
         return _write_file(path, fi, False) + _file_badge(path)
     # delete
     if not os.path.exists(path):
@@ -4697,12 +4830,14 @@ def _reviewer_agent(worker, question):
             return billing_rev
         if admin_rev and admin_rev["id"] != wid:
             return admin_rev
-        return billing_rev or admin_rev
+        # Only candidate(s) equal the worker -> no independent reviewer (skip review).
+        return None
     if admin_rev and admin_rev["id"] != wid:
         return admin_rev
     if billing_rev and billing_rev["id"] != wid:
         return billing_rev
-    return admin_rev or billing_rev
+    # Only candidate(s) equal the worker -> no independent reviewer (skip review).
+    return None
 
 
 def _review_enabled():
@@ -7532,7 +7667,6 @@ def export_rows(conn):
 
 
 @app.get("/api/agents/files/download")
-@app.get("/api/agents/files/download")
 def agent_file_download():
     """Stream a generated file (Aazaz Ahmed file-engine output) to the authenticated
     user. Any file the agent wrote is served as an attachment; readers can't preview."""
@@ -7544,12 +7678,15 @@ def agent_file_download():
         path = _sanitize_fs_path(raw)
     except ValueError as e:
         return jsonify({"error": str(e)}), 400
+    if _is_sensitive_file(path):
+        return jsonify({"error": "Ye file download ke liye allow nahi hai (server/sensitive file)."}), 403
     if not os.path.isfile(path):
         return jsonify({"error": "File nahi mili"}), 404
     return send_file(path, as_attachment=True, download_name=os.path.basename(path))
 
 
 @app.get("/api/export/json")
+@admin_only
 def export_json():
     conn = get_db()
     payload = export_rows(conn)
@@ -7564,6 +7701,7 @@ def export_json():
 
 
 @app.get("/api/export/excel")
+@admin_only
 def export_excel():
     from openpyxl import Workbook
     from openpyxl.styles import Font
@@ -7838,6 +7976,13 @@ def import_backup():
             key = str(row.get("key") or "").strip()
             if not key:
                 continue
+            if mode == "merge":
+                dup = conn.execute("SELECT 1 FROM app_settings WHERE key=?", (key,)).fetchone()
+                if dup:
+                    # Merge mode must NOT clobber current settings (e.g. routing
+                    # / review / embed flags) with old backup values.
+                    count("app_settings", "skipped")
+                    continue
             conn.execute(
                 "INSERT OR REPLACE INTO app_settings (key, value, updated_at) VALUES (?, ?, ?)",
                 (key, str(row.get("value") or ""), str(row.get("updated_at") or now_stamp())),
@@ -7904,6 +8049,7 @@ def _xlsx_bytes(wb):
 
 
 @app.get("/api/export/sqlite")
+@admin_only
 def export_sqlite():
     src = get_db()
     try:
@@ -7912,13 +8058,18 @@ def export_sqlite():
         pass
     fd, tmp_path = tempfile.mkstemp(suffix=".sqlite")
     os.close(fd)
-    dst = sqlite3.connect(tmp_path)
-    src.backup(dst)
-    dst.close()
-    src.close()
-    with open(tmp_path, "rb") as fh:
-        payload = fh.read()
-    os.unlink(tmp_path)
+    try:
+        dst = sqlite3.connect(tmp_path)
+        try:
+            src.backup(dst)
+        finally:
+            dst.close()
+        src.close()
+        with open(tmp_path, "rb") as fh:
+            payload = fh.read()
+    finally:
+        if os.path.exists(tmp_path):
+            os.unlink(tmp_path)
     stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
     return send_file(
         BytesIO(payload),

@@ -56,6 +56,231 @@
   --popover-foreground: 0 0% 98%;
 }
 
+/* Top 4 metric cards: the metric icon renders as a low-opacity watermark in
+   the bottom-right corner (partially cut off), behind the label + number.
+   No foreground chip / border around the icon. Works for light, dark, bento. */
+#view-dashboard > div:nth-of-type(1) > .card {
+  position: relative;
+  overflow: hidden;
+}
+#view-dashboard > div:nth-of-type(1) > .card .kpi-bg-icon {
+  position: absolute;
+  left: auto;
+  right: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 63px;
+  height: 63px;
+  opacity: 0.25;
+  pointer-events: none;
+  z-index: 0;
+  color: inherit;
+}
+#view-dashboard > div:nth-of-type(1) > .card > div {
+  position: relative;
+  z-index: 1;
+}
+
+/* Bento (color-only third theme) — soft modern pastel, low contrast.
+   Exact user palette (hex codes in comments). Overrides the light :root
+   tokens so every hsl(var(--...))/hsl(var(--...)/...) consumer recolors
+   itself without any layout changes. `.dark` is NOT present here, so
+   Tailwind `dark:` utilities never fire. */
+.bento {
+  /* Main app background (canvas): soft creamy off-white #FAF6EC */
+  --background: 42 55% 95%;
+  /* Primary text: #1A1A1A */
+  --foreground: 0 0% 10%;
+  /* Large bento cards (Weekly Rhythm, Recent Notes, etc.): #EDE6D8/#EFE9DC beige */
+  --card: 42 35% 89%;
+  --card-foreground: 0 0% 10%;
+  /* Pill badges & buttons: #141416 bg + #FFFFFF text */
+  --primary: 240 5% 8%;
+  --primary-foreground: 0 0% 100%;
+  --secondary: 42 30% 92%;
+  --secondary-foreground: 0 0% 10%;
+  --muted: 42 30% 92%;
+  /* Secondary / muted text: #5E5950 (slightly deepened for legibility) */
+  --muted-foreground: 42 8% 36%;
+  --accent: 42 30% 86%;
+  --accent-foreground: 0 0% 10%;
+  --destructive: 0 84.2% 60.2%;
+  --destructive-foreground: 0 0% 98%;
+  --border: 42 22% 82%;
+  --input: 42 22% 82%;
+  --ring: 240 5% 8%;
+  --radius: 1rem;
+}
+
+.bento {
+  --popover: 42 35% 92%;
+  --popover-foreground: 0 0% 10%;
+}
+
+/* Main app background (canvas): #FAF6EC */
+.bento body {
+  background: #FAF6EC;
+}
+
+/* Large bento cards: warm beige container, hairline border, soft shadow */
+.bento .card {
+  border-color: rgb(0 0 0 / 0.04);
+  box-shadow: 0 1px 2px 0 rgb(0 0 0 / 0.04), 0 8px 24px -12px rgb(0 0 0 / 0.08);
+}
+
+/* Left sidebar: #141416 (deep charcoal/black) */
+.bento #sidebar {
+  background: #141416;
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.bento #sidebar .border-r,
+.bento #sidebar .border-b,
+.bento #sidebar .border-t {
+  border-color: rgba(255, 255, 255, 0.08);
+}
+.bento #sidebar .nav-link {
+  color: rgba(255, 255, 255, 0.62);
+}
+.bento #sidebar .nav-link:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+.bento #sidebar .nav-link.active {
+  background: #FFFFFF;
+  color: #141416;
+  box-shadow: 0 1px 6px rgb(0 0 0 / 0.2);
+}
+.bento #sidebar #brand-toggle svg {
+  color: #EBDBA6;
+}
+.bento #sidebar #brand-text p {
+  color: #FFFFFF;
+}
+.bento #sidebar #brand-text .text-muted-foreground,
+.bento #sidebar #sidebar-theme-toggle {
+  color: rgba(255, 255, 255, 0.5);
+}
+.bento #sidebar #sidebar-theme-toggle:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: #FFFFFF;
+}
+
+/* Pill badges & buttons: #141416 background with #FFFFFF text */
+.bento .badge-secondary {
+  background: #141416;
+  color: #FFFFFF;
+  border-color: transparent;
+}
+
+/* Top 4 metric (KPI) cards — muted pastel tones (desaturated warm palette)
+   with a soft light sheen, soft rounded corners and a gentle hover lift
+   (professional bento feel). The metric icon is a corner watermark (see
+   global .kpi-bg-icon) — no dots, no borders, no foreground chip. */
+.bento #view-dashboard > div:nth-of-type(1) > .card {
+  position: relative;
+  overflow: hidden;
+  border-radius: 1.25rem;
+  padding: 1.5rem;
+  transition: transform 0.18s ease, box-shadow 0.18s ease;
+}
+.bento #view-dashboard > div:nth-of-type(1) > .card:hover {
+  transform: translateY(-2px);
+  box-shadow: 0 4px 12px -2px rgb(0 0 0 / 0.08), 0 14px 30px -12px rgb(0 0 0 / 0.15);
+}
+
+/* Warm beige-gold (Total Tasks) */
+.bento #view-dashboard > div:nth-of-type(1) > .card:nth-child(1) {
+  background: radial-gradient(120% 90% at 88% -12%, rgba(255, 255, 255, 0.5), transparent 55%), #EBDBA6;
+  color: #2B2308;
+}
+/* Soft dusty rose (Pending) */
+.bento #view-dashboard > div:nth-of-type(1) > .card:nth-child(2) {
+  background: radial-gradient(120% 90% at 88% -12%, rgba(255, 255, 255, 0.5), transparent 55%), #E4B6C2;
+  color: #3D1426;
+}
+/* Muted sky blue (Notes) */
+.bento #view-dashboard > div:nth-of-type(1) > .card:nth-child(3) {
+  background: radial-gradient(120% 90% at 88% -12%, rgba(255, 255, 255, 0.5), transparent 55%), #B7D2E5;
+  color: #122E3B;
+}
+/* Soft sage green (Routines Today) */
+.bento #view-dashboard > div:nth-of-type(1) > .card:nth-child(4) {
+  background: radial-gradient(120% 90% at 88% -12%, rgba(255, 255, 255, 0.5), transparent 55%), #BED0A8;
+  color: #1D2D12;
+}
+
+.bento #view-dashboard > div:nth-of-type(1) > .card .text-sm {
+  color: inherit;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  font-weight: 600;
+  font-size: 0.6875rem;
+}
+
+.bento #view-dashboard > div:nth-of-type(1) > .card .text-3xl {
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.35);
+}
+
+/* Notes: colorful subtle pastel tint per card (Notes grid + Recent Notes)
+   so they feel richer than the flat beige canvas. Same muted family as the
+   KPI cards — gold / rose / sky / sage cycle. */
+.bento #notes-grid .card,
+.bento #recent-notes > button {
+  border-color: rgb(0 0 0 / 0.06);
+}
+.bento #notes-grid .card:nth-child(4n+1),
+.bento #recent-notes > button:nth-child(4n+1) {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.4), transparent 55%), #EFDFB2;
+}
+.bento #notes-grid .card:nth-child(4n+2),
+.bento #recent-notes > button:nth-child(4n+2) {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.35), transparent 55%), #E9C6CF;
+}
+.bento #notes-grid .card:nth-child(4n+3),
+.bento #recent-notes > button:nth-child(4n+3) {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.35), transparent 55%), #C4D6E4;
+}
+.bento #notes-grid .card:nth-child(4n+4),
+.bento #recent-notes > button:nth-child(4n+4) {
+  background: linear-gradient(150deg, rgba(255, 255, 255, 0.35), transparent 55%), #CBDBB9;
+}
+/* Note tags: subtle dark chips that read on any tint */
+.bento #notes-grid .card .bg-secondary {
+  background: rgb(0 0 0 / 0.06);
+  color: inherit;
+}
+
+.bento .btn-primary {
+  background: #141416;
+  color: #FFFFFF;
+}
+
+.bento #view-dashboard .card-title {
+  color: #161616;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+}
+
+/* Sidebar icons: consistent, modern rounded line style */
+.bento #sidebar .nav-link svg {
+  width: 17px;
+  height: 17px;
+  stroke-width: 1.75;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+
+/* Radial chart: softer palette + clean rounded progression fill in bento */
+.bento #rings-chart svg {
+  filter: saturate(0.8) brightness(1.04);
+}
+.bento #rings-chart .ring-track {
+  stroke: rgba(120, 110, 95, 0.16);
+}
+.bento #rings-chart .ring-value {
+  stroke-linecap: round;
+}
+
 * {
   border-color: hsl(var(--border));
 }
