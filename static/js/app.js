@@ -282,7 +282,7 @@ function loadAll() {
   invalidateSearchIndex();
   return Promise.all([
     api("/api/tasks").then((d) => (state.tasks = d)),
-    api("/api/notes").then((d) => (state.notes = d)),
+    api("/api/notes?lite=1").then((d) => (state.notes = d)),
     api("/api/pages").then((d) => (state.pages = d)),
     api("/api/routines").then((d) => (state.routines = d)),
     api("/api/portals").then((d) => (state.portals = (d && Array.isArray(d.portals)) ? d.portals : []))
@@ -399,12 +399,16 @@ function setEditorOverlay(open) {
   $("#notes-editor-wrap")?.classList.toggle("hidden", !open);
 }
 
-function openEditor(id, kind = "note") {
+async function openEditor(id, kind = "note") {
   if (!requireWrite("edit notes")) return;
   clearTimeout(markDirty._t);
   markDirty._t = null;
   state.editorKind = kind;
   state.editingId = id;
+  if (id) {
+    const doc = currentNote();
+    if (doc) await ensureNoteFull(doc);
+  }
   const doc = id ? currentNote() : null;
   $("#note-title-input").value = doc ? doc.title : "";
   $("#note-title-input").placeholder = "Untitled note";
@@ -1372,9 +1376,10 @@ function palSnippet(c, q) {
   return palHL(frag, q, { idx: pos - start, len: q.length });
 }
 
-function palRender() {
+async function palRender() {
   const box = $("#palette-results");
   if (!box) return;
+  await ensureNotesFull();
   const qRaw = ($("#palette-input").value || "").trim();
   const q = qRaw.toLowerCase();
   const statsEl = document.getElementById("palette-stats");
@@ -1597,6 +1602,7 @@ async function showPageDetail(id) {
     $("#notes-editor-wrap").classList.add("hidden");
     state.returnTo = null;
   }
+  await ensureNotesFull();
   switchViewShell("pages");
   $("#pages-list-wrap").classList.add("hidden");
   $("#page-detail-wrap").classList.remove("hidden");
@@ -1835,6 +1841,33 @@ function invalidateSearchIndex() {
   STRIP_CACHE.clear();
 }
 
+// Dashboard loads notes in "lite" mode (no content). Content is fetched
+// on demand the first time the notes grid, palette or an editor/viewer
+// actually needs it, so a huge note library never slows down first paint.
+let NOTES_FULL_P = null;
+function ensureNotesFull() {
+  if (!state.notes.some((n) => n.content == null)) return Promise.resolve();
+  if (!NOTES_FULL_P) {
+    NOTES_FULL_P = api("/api/notes")
+      .then((d) => {
+        state.notes = d;
+        invalidateSearchIndex();
+      })
+      .finally(() => {
+        NOTES_FULL_P = null;
+      });
+  }
+  return NOTES_FULL_P;
+}
+function ensureNoteFull(n) {
+  if (n && typeof n.content === "string") return Promise.resolve(n);
+  return api(`/api/notes/${n && n.id}`).then((full) => {
+    Object.assign(n, full);
+    invalidateSearchIndex();
+    return n;
+  });
+}
+
 // every word of the query must match (AND).
 // Normal mode: whole-word match only — "uti" will NOT match "computing".
 // Deep mode: substring match anywhere — looser, helps with spelling mistakes.
@@ -1852,7 +1885,8 @@ function matchesQuery(hay, q, deep = false) {
   });
 }
 
-function renderNotesGrid() {
+async function renderNotesGrid() {
+  await ensureNotesFull();
   const q = state.noteQuery.trim().toLowerCase();
   const tag = state.activeTag;
   const idx = getSearchIndex();
@@ -2078,7 +2112,7 @@ function applyViewerMode() {
   $$("#viewer-mode [data-mode]").forEach((b) => b.classList.toggle("active", b.dataset.mode === viewerMode));
 }
 
-function openViewer(id, from = null) {
+async function openViewer(id, from = null) {
   let note = state.notes.find((n) => n.id === id);
   if (!note) {
     // Stale client list — refresh once from the server before giving up
@@ -2092,6 +2126,10 @@ function openViewer(id, from = null) {
       })
       .catch((e) => toast(e.message, "error"));
     return;
+  }
+  if (typeof note.content !== "string") {
+    await ensureNotesFull();
+    note = state.notes.find((x) => x.id === id);
   }
   state.editingId = null;
   state.returnTo = from === "page" ? "page" : null;
@@ -3053,7 +3091,7 @@ function renderRecentNotes() {
       <button class="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-left hover:bg-accent" data-open="${n.id}">
         <div class="min-w-0 flex-1">
           <p class="truncate text-sm font-medium">${n.pinned ? "📌 " : ""}${escapeHtml(n.title)}</p>
-          <p class="truncate text-xs text-muted-foreground">${escapeHtml(stripHtml(n.content, 70)) || "Empty note"}</p>
+          <p class="truncate text-xs text-muted-foreground">${escapeHtml(stripHtml(n.content != null ? n.content : n.snippet, 70)) || "Empty note"}</p>
         </div>
         <span class="shrink-0 text-[10px] text-muted-foreground">${relTime(n.updated_at)}</span>
       </button>`

@@ -15,6 +15,7 @@ import urllib.parse
 import urllib.request
 import uuid
 import base64
+import gzip
 from html.parser import HTMLParser
 from collections import defaultdict, deque
 from datetime import date, datetime, timedelta, timezone
@@ -197,6 +198,32 @@ def apply_security_headers(response):
         response.headers["Cache-Control"] = "no-store"
     if request.path.startswith("/s/"):
         response.headers["X-Robots-Tag"] = "noindex, nofollow"
+    return response
+
+
+@app.after_request
+def maybe_gzip(response):
+    # Compress JSON/HTML/JS payloads on the fly so large lists (notes, tasks,
+    # page content) and dashboard data transfer much faster over WAN links.
+    # Skipped for streamed responses, SSE events and already-encoded bodies.
+    if response.headers.get("Content-Encoding"):
+        return response
+    if not isinstance(response.content_length, int) or response.content_length < 1024:
+        return response
+    ct = response.content_type or ""
+    if not (ct.startswith("application/json") or ct.startswith("text/") or ct.startswith("application/javascript")):
+        return response
+    if ct == "text/event-stream" or response.direct_passthrough or "gzip" not in request.headers.get("Accept-Encoding", ""):
+        return response
+    body = response.get_data()
+    if not body or len(body) < 1024:
+        return response
+    compressed = gzip.compress(body, 6)
+    if len(compressed) >= len(body):
+        return response
+    response.set_data(compressed)
+    response.headers["Content-Encoding"] = "gzip"
+    response.headers["Vary"] = "Accept-Encoding"
     return response
 
 
@@ -5875,14 +5902,33 @@ def delete_task(task_id):
 
 @app.get("/api/notes")
 def list_notes():
+    lite = request.args.get("lite") == "1"
     conn = get_db()
     rows = conn.execute(
         "SELECT id, title, content, pinned, tags, created_at, updated_at, created_by, page_id FROM notes ORDER BY pinned DESC, updated_at DESC"
     ).fetchall()
     conn.close()
+    if lite:
+        # Dashboard loads this: lightweight rows (no content) with a small
+        # snippet for previews. Content is fetched on demand via ensureNotesFull.
+        snippet = lambda raw: re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html.unescape(raw or ""))).strip()[:90]
+        return jsonify([{**dict(r), "content": None, "snippet": snippet(r["content"])} for r in rows])
     # Re-sanitize on read so legacy rows written by the old regex sanitizer can
     # never inject entity-encoded markup into the client.
     return jsonify([{**dict(r), "content": sanitize_html(r["content"])} for r in rows])
+
+
+@app.get("/api/notes/<int:note_id>")
+def get_note(note_id):
+    conn = get_db()
+    row = conn.execute(
+        "SELECT id, title, content, pinned, tags, created_at, updated_at, created_by, page_id FROM notes WHERE id = ?",
+        (note_id,),
+    ).fetchone()
+    conn.close()
+    if not row:
+        return jsonify({"error": "Note not found"}), 404
+    return jsonify({**dict(row), "content": sanitize_html(row["content"])})
 
 
 @app.post("/api/notes")

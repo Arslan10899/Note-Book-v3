@@ -116,6 +116,36 @@ class TestAuth(BaseTest):
         self.assertTrue(renamed.get_json()["avatar"].startswith("data:image/jpeg;base64,"))
 
 
+class TestNotesLiteAndGzip(BaseTest):
+    def setUp(self):
+        super().setUp()
+        self.register()
+
+    def test_notes_lite_and_full(self):
+        r = self.client.post("/api/notes", json={"title": "Speed", "content": "<p>hello world</p>"})
+        self.assertEqual(r.status_code, 201)
+        nid = r.get_json()["id"]
+        lite = self.client.get("/api/notes?lite=1").get_json()
+        row = next(x for x in lite if x["id"] == nid)
+        self.assertIsNone(row["content"])
+        self.assertIn("hello world", row["snippet"])
+        full = self.client.get("/api/notes").get_json()
+        self.assertEqual(next(x["content"] for x in full if x["id"] == nid), "<p>hello world</p>")
+        single = self.client.get(f"/api/notes/{nid}").get_json()
+        self.assertEqual(single["content"], "<p>hello world</p>")
+        self.assertEqual(self.client.get("/api/notes/999999").status_code, 404)
+
+    def test_gzip_negotiation(self):
+        self.client.post("/api/notes", json={"title": "Big", "content": "<p>speed check " + "x" * 3000 + "</p>"})
+        big = self.client.get("/api/notes", headers={"Accept-Encoding": "gzip"})
+        self.assertEqual(big.headers.get("Content-Encoding"), "gzip")
+        import gzip as gz
+        payload = json.loads(gz.decompress(big.data).decode())
+        self.assertIn("Big", [n["title"] for n in payload])
+        plain = self.client.get("/api/notes")
+        self.assertNotIn("gzip", plain.headers.get("Content-Encoding") or "")
+
+
 class TestTasks(BaseTest):
     def setUp(self):
         super().setUp()
