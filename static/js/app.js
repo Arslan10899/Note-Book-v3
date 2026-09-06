@@ -210,11 +210,10 @@ function syncThemeUI() {
   $("#icon-moon")?.classList.toggle("hidden", !dark);
   $("#icon-sun")?.classList.toggle("hidden", dark || bento);
   $("#icon-bento")?.classList.toggle("hidden", !bento);
-  $("#sb-icon-moon")?.classList.toggle("hidden", !dark);
-  $("#sb-icon-sun")?.classList.toggle("hidden", dark || bento);
-  $("#sb-icon-bento")?.classList.toggle("hidden", !bento);
-  const label = $("#theme-label");
-  if (label) label.textContent = dark ? "Dark mode" : bento ? "Bento mode" : "Light mode";
+  const active = dark ? "dark" : bento ? "bento" : "light";
+  const sst = $("#sidebar-theme-toggle");
+  if (sst) sst.dataset.act = active;
+  $$(".sst-seg").forEach((b) => b.classList.toggle("active", b.dataset.seqTheme === active));
 }
 
 function setRoute(h) {
@@ -531,7 +530,7 @@ function renderPagesGrid() {
         <div class="mt-3 flex items-center gap-1.5">
           <span class="text-[10px] text-muted-foreground">${relTime(p.updated_at)}</span>
           ${creatorChip(p)}
-          <div class="ml-auto hidden items-center gap-1 group-hover:flex">
+          <div class="ml-auto flex items-center gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
             <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-pact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
           </div>
         </div>
@@ -1587,21 +1586,28 @@ function renderPageNotes(notes) {
     ? notes
         .map(
           (n) => `
-          <div class="group flex cursor-pointer items-center gap-3 px-4 py-3 transition-colors hover:bg-accent/50" data-pnote="${n.id}">
-            <span class="shrink-0 text-base">📄</span>
-            <div class="min-w-0 flex-1">
-              <p class="truncate text-sm font-medium">${escapeHtml(n.title)}</p>
-              <p class="truncate text-xs text-muted-foreground">${escapeHtml(stripHtml(n.content, 90)) || "Empty note"}</p>
+          <div class="card group cursor-pointer p-4 transition-shadow hover:shadow-md" data-pnote="${n.id}">
+            <div class="flex items-start justify-between gap-2">
+              <h4 class="min-w-0 flex-1 truncate text-sm font-semibold">${n.pinned ? "📌 " : ""}${escapeHtml(n.title)}</h4>
             </div>
-            <span class="shrink-0 text-[10px] text-muted-foreground">${relTime(n.updated_at)}</span>
-            ${canWrite() ? `<div class="flex shrink-0 items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
+            <p class="mt-1 line-clamp-3 min-h-[42px] text-xs leading-relaxed text-muted-foreground">${escapeHtml(stripHtml(n.content, 90)) || "Empty note"}</p>
+            <div class="mt-3 flex items-center gap-1.5">
+              ${(n.tags || "")
+                .split(",")
+                .filter((t) => t.trim())
+                .slice(0, 3)
+                .map((t) => `<span class="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">${escapeHtml(t.trim())}</span>`)
+                .join("")}
+              <span class="ml-auto shrink-0 text-right text-[10px] leading-tight text-muted-foreground" title="Updated ${fmtStampFull(n.updated_at)}">${relTime(n.updated_at)}</span>
+            </div>
+            ${canWrite() ? `<div class="mt-3 flex items-center gap-1 border-t border-border/70 pt-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
               <button class="tool-btn h-7 min-w-7" data-pnact="unlink" title="Remove from page"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/></svg></button>
               <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-pnact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
             </div>` : ""}
           </div>`
         )
         .join("")
-    : `<p class="px-4 py-8 text-center text-sm text-muted-foreground">No notes on this page yet</p>`;
+    : `<p class="col-span-full px-4 py-8 text-center text-sm text-muted-foreground">No notes on this page yet</p>`;
 }
 
 function renderPageTasks(tasks) {
@@ -1814,7 +1820,7 @@ function renderNotesGrid() {
             ${relTime(n.updated_at)}<br><span class="opacity-70">Created ${fmtStampShort(n.created_at)}</span>
           </span>
         </div>
-        <div class="mt-3 hidden items-center gap-1 border-t border-border pt-2 group-hover:flex">
+        <div class="mt-3 flex items-center gap-1 border-t border-border/70 pt-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button class="tool-btn h-7 min-w-7" data-act="view" title="View"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
           ${canWrite() ? `<button class="tool-btn h-7 min-w-7" data-act="edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
           ${isAdminUser() ? `<button class="tool-btn h-7 min-w-7 hover:text-destructive" data-act="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
@@ -2384,6 +2390,8 @@ function initEditorToolbar() {
     if (!plain && !html) return;
     e.preventDefault();
     const hasRich = html && html !== "<meta charset='utf-8'>" && html !== '<meta charset="utf-8">';
+    // Capture the insertion point BEFORE any menu interaction so the caret
+    // survives the click and the paste lands in the right spot.
     saveSelection();
     pendingPaste = { plain, html: hasRich ? html : "" };
     let rect = null;
@@ -3576,13 +3584,71 @@ function dayDialog(dateStr) {
 // ---------- Smart paste menu (Only text / With formatting) ----------
 let pendingPaste = null;
 
-function insertPlain(plain) {
+// Clean pasted HTML so spreadsheet tables paste neatly into notes:
+// drop colgroup/fixed pixel widths/metadata that squish cells, keep colors.
+function sanitizeTableHtml(html) {
+  try {
+    const doc = new DOMParser().parseFromString(html, "text/html");
+    doc.querySelectorAll("colgroup, col, meta, title, head, style, script, link, base, font").forEach((n) => n.remove());
+    doc.querySelectorAll("table").forEach((t) => {
+      t.removeAttribute("width");
+      t.removeAttribute("align");
+      t.removeAttribute("border");
+      t.style.removeProperty("width");
+    });
+    doc.querySelectorAll("tr, td, th").forEach((c) => {
+      c.removeAttribute("width");
+      c.removeAttribute("height");
+      c.removeAttribute("class");
+      c.removeAttribute("nowrap");
+      c.style.removeProperty("width");
+      c.style.removeProperty("height");
+      c.style.removeProperty("min-width");
+      if (!c.getAttribute("style")) c.removeAttribute("style");
+    });
+    const out = doc.body ? doc.body.innerHTML : html;
+    return out.trim() || html;
+  } catch (err) {
+    return html;
+  }
+}
+
+// Robust insertion fallback that keeps the caret inside the editor.
+function insertHtmlFallback(html) {
+  const ed = $("#note-content-input");
+  let range =
+    savedRange ||
+    (window.getSelection() && window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null);
+  if (!range || !ed || !ed.contains(range.commonAncestorContainer)) return false;
+  try {
+    const frag = range.createContextualFragment(html);
+    range.deleteContents();
+    range.insertNode(frag);
+    const sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+    return true;
+  } catch (err) {
+    return false;
+  }
+}
+
+function focusEditorForPaste() {
   restoreSelection();
+  const ed = $("#note-content-input");
+  if (ed) ed.focus({ preventScroll: true });
+  restoreSelection();
+}
+
+function insertPlain(plain) {
+  focusEditorForPaste();
   let ok = false;
   try { ok = document.execCommand("insertText", false, plain); } catch (err) { ok = false; }
   if (!ok) {
     const esc = plain.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/\r?\n/g, "<br>");
-    document.execCommand("insertHTML", false, esc);
+    if (!insertHtmlFallback(esc)) {
+      try { document.execCommand("insertHTML", false, esc); } catch (err) {}
+    }
   }
   markDirty();
   syncToolbarState();
@@ -3597,15 +3663,18 @@ function pastePlain() {
 function pasteFormatted() {
   const p = pendingPaste || { html: "", plain: "" };
   pendingPaste = null;
-  restoreSelection();
+  focusEditorForPaste();
   if (p.html) {
-    try {
-      document.execCommand("insertHTML", false, p.html);
+    const clean = sanitizeTableHtml(p.html);
+    let ok = false;
+    try { ok = document.execCommand("insertHTML", false, clean); } catch (err) { ok = false; }
+    if (ok || insertHtmlFallback(clean)) {
       markDirty();
       syncToolbarState();
       return;
-    } catch (err) {}
+    }
   }
+  // Last resort: never degrade a formatted table to jarble — try plain text.
   if (p.plain) insertPlain(p.plain);
 }
 
@@ -3615,7 +3684,13 @@ function onPasteMenuDocDown(e) {
 }
 
 function onPasteMenuKey(e) {
-  if (e.key === "Escape") { e.preventDefault(); hidePasteMenu(); }
+  if (e.key === "Escape") {
+    e.preventDefault();
+    hidePasteMenu();
+    // Escape pastes as plain text instead of discarding — the user's
+    // copied content must never silently disappear.
+    pastePlain();
+  }
 }
 
 function hidePasteMenu() {
@@ -3659,8 +3734,8 @@ function showPasteMenu(rectAtPaste, richAvailable) {
   header.className = "border-b border-border px-3 py-2 text-[10px] font-bold uppercase tracking-wide text-muted-foreground";
   header.textContent = "Paste as";
   menu.appendChild(header);
+  menu.appendChild(mk("With formatting", "Keep table & colors", pasteFormatted, !richAvailable));
   menu.appendChild(mk("Only text", "Note style", pastePlain));
-  menu.appendChild(mk("With formatting", "Keep colors", pasteFormatted, !richAvailable));
   const sep = document.createElement("div");
   sep.className = "mx-2 border-t border-border/70";
   menu.appendChild(sep);
@@ -3760,7 +3835,7 @@ function renderPortals() {
               </p>`
             : ""
         }
-        <div class="absolute right-2 top-2 hidden gap-1 group-hover:flex">
+        <div class="absolute right-2 top-2 flex gap-1 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
           <button type="button" class="btn btn-ghost btn-icon" data-edit-portal="${i}" title="Edit">
             <svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
           </button>
@@ -7059,7 +7134,7 @@ function initApp() {
   $("#sidebar-toggle").addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
   $("#sidebar-overlay").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
 
-  $("#sidebar-theme-toggle").addEventListener("click", () => applyTheme(nextTheme()));
+  $$(".sst-seg").forEach((b) => b.addEventListener("click", () => applyTheme(b.dataset.seqTheme)));
   $("#header-theme-toggle").addEventListener("click", () => applyTheme(nextTheme()));
   $("#theme-dark-btn").addEventListener("click", () => applyTheme("dark"));
   $("#theme-light-btn").addEventListener("click", () => applyTheme("light"));
