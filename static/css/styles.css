@@ -805,23 +805,32 @@ input[type="color"] {
   white-space: nowrap;
 }
 
-/* Dark board keeps the paper light — sticky notes glow on dark */
+/* Dark board: the paper fills the whole tile — no dark glass frame, only
+   soft light-pastel sticky notes glowing on the dark wall. */
 .dark .note-card {
-  background: rgba(47, 49, 58, 0.42);
+  background: transparent;
   box-shadow:
     0 4px 6px -1px rgba(0, 0, 0, 0.4),
     0 18px 28px -14px rgba(0, 0, 0, 0.55),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.08);
 }
 .dark .note-card:hover {
   box-shadow:
     0 12px 18px -6px rgba(0, 0, 0, 0.5),
     0 30px 45px -16px rgba(0, 0, 0, 0.6),
-    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+    inset 0 0 0 1px rgba(255, 255, 255, 0.16);
 }
-.dark .note-actions { background: rgba(20, 21, 26, 0.45); border-color: rgba(255, 255, 255, 0.1); }
-.dark .note-actions .tool-btn { color: #d4d4d8; }
-.dark .note-actions .tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.dark .note-inner {
+  margin: 0;
+  border-radius: 18px;
+  padding: 20px 16px 12px;
+}
+.dark .note-inner.peach   { background: #ffe3cc; }
+.dark .note-inner.blue    { background: #dce8ff; }
+.dark .note-inner.purple  { background: #ece3fb; }
+.dark .note-actions { background: rgba(255, 255, 255, 0.6); border-color: rgba(0, 0, 0, 0.06); }
+.dark .note-actions .tool-btn { color: #4a443d; }
+.dark .note-actions .tool-btn:hover { background: rgba(0, 0, 0, 0.08); color: #211d19; }
 .dark .note-meta { border-top-color: rgba(0, 0, 0, 0.18); }
 
 /* Bento board — warm glass with the built-in pastel paper */
