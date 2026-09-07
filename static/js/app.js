@@ -27,7 +27,7 @@ let HOLIDAYS = {};
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide" };
+const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", whiteboard: "Whiteboard", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -258,6 +258,7 @@ async function switchView(name) {
   else if (name === "notes") showNotesList();
   else if (name === "pages") showPagesList();
   else if (name === "webportals") loadPortals();
+  else if (name === "whiteboard") showWhiteboard();
   else if (name === "schedule") loadSchedule();
   else if (name === "chat") loadChat();
   else if (name === "knowledge") loadKnowledge();
@@ -4093,6 +4094,10 @@ function portalDialog(idx) {
 
 function initPortals() {
   $("#portals-add-btn").addEventListener("click", () => portalDialog(null));
+}
+
+function showWhiteboard() {
+  if (window.WB && typeof window.WB.enter === "function") window.WB.enter();
 }
 
 async function loadPortals() {

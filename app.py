@@ -590,6 +590,11 @@ CREATE TABLE IF NOT EXISTS embed_vectors (
     provider TEXT NOT NULL DEFAULT '',
     updated_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS whiteboards (
+    user_id INTEGER PRIMARY KEY,
+    data TEXT NOT NULL DEFAULT '{}',
+    updated_at TEXT NOT NULL DEFAULT ''
+);
 CREATE INDEX IF NOT EXISTS idx_chat_api_keys_provider ON chat_api_keys(provider);
 CREATE INDEX IF NOT EXISTS idx_tasks_page_id ON tasks(page_id);
 CREATE INDEX IF NOT EXISTS idx_notes_page_id ON notes(page_id);
@@ -6920,6 +6925,53 @@ def web_portals_delete(portal_id):
     conn.commit()
     conn.close()
     return jsonify({"ok": True})
+
+
+# ---------------- Interactive whiteboard ----------------
+
+@app.get("/api/whiteboard")
+def whiteboard_get():
+    u = current_user()
+    if not u:
+        return jsonify({"error": "Not authenticated"}), 401
+    conn = get_db()
+    row = conn.execute("SELECT data FROM whiteboards WHERE user_id = ?", (u["id"],)).fetchone()
+    conn.close()
+    if row is None:
+        return jsonify({"data": {}, "updated_at": ""})
+    try:
+        payload = json.loads(row["data"])
+    except (TypeError, ValueError):
+        payload = {}
+    return jsonify({"data": payload, "updated_at": row["updated_at"]})
+
+
+@app.put("/api/whiteboard")
+@can_write
+def whiteboard_save():
+    data = request.get_json(silent=True) or {}
+    payload = data.get("data")
+    if payload is None:
+        return jsonify({"error": "Missing board data"}), 400
+    try:
+        serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid board data"}), 400
+    if len(serialized) > 4 * 1024 * 1024:
+        return jsonify({"error": "Board data too large"}), 413
+    u = current_user()
+    if not u:
+        return jsonify({"error": "Not authenticated"}), 401
+    stamp = now_stamp()
+    conn = get_db()
+    conn.execute(
+        "INSERT INTO whiteboards (user_id, data, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+        (u["id"], serialized, stamp),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "updated_at": stamp})
 
 
 @app.get("/api/chat/review")
