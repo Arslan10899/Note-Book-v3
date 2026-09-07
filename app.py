@@ -6957,7 +6957,7 @@ def whiteboard_save():
         serialized = json.dumps(payload, ensure_ascii=False, separators=(",", ":"))
     except (TypeError, ValueError):
         return jsonify({"error": "Invalid board data"}), 400
-    if len(serialized) > 4 * 1024 * 1024:
+    if len(serialized) > 8 * 1024 * 1024:
         return jsonify({"error": "Board data too large"}), 413
     u = current_user()
     if not u:
