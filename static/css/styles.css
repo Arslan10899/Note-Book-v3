@@ -2061,24 +2061,65 @@ input[type="color"] {
     position: fixed;
     left: calc(4.5rem + 8px);
     top: 5rem;
-    min-width: 12.5rem;
+    width: 3rem;
     margin: 0;
     padding: 0.375rem;
+    display: flex;
+    flex-direction: column;
+    gap: 0.3125rem;
     border-left: none;
     border: 1px solid hsl(var(--border));
-    border-radius: calc(var(--radius) - 2px);
+    border-radius: 12px;
     background: hsl(var(--card));
     box-shadow: 0 8px 28px rgb(0 0 0 / .14);
     z-index: 60;
   }
   body.sidebar-mini .sidebar-group[open] > .sidebar-sub .nav-link {
-    justify-content: flex-start;
-    gap: 0.625rem;
-    padding: 0.5rem 0.75rem;
+    justify-content: center;
+    gap: 0;
+    width: 2.25rem;
+    height: 2.25rem;
+    margin-inline: auto;
+    padding: 0;
+    border-radius: 8px;
     font-size: 0.875rem;
   }
   body.sidebar-mini .sidebar-group[open] > .sidebar-sub .nav-link > span {
-    display: inline;
+    display: none;
+  }
+  /* Icon-only rail + flyout: hover shows a floating name popup */
+  body.sidebar-mini .nav-link[data-tip],
+  body.sidebar-mini .sidebar-summary[data-tip] {
+    position: relative;
+  }
+  body.sidebar-mini .nav-link[data-tip]::after,
+  body.sidebar-mini .sidebar-summary[data-tip]::after {
+    content: attr(data-tip);
+    position: absolute;
+    left: calc(100% + 10px);
+    top: 50%;
+    transform: translateY(-50%) scale(.96);
+    z-index: 70;
+    white-space: nowrap;
+    border-radius: 6px;
+    background: hsl(var(--card));
+    color: hsl(var(--card-foreground));
+    padding: 4px 10px;
+    font-size: 0.75rem;
+    font-weight: 500;
+    box-shadow: 0 6px 20px rgb(0 0 0 / .2), inset 0 0 0 1px hsl(var(--border));
+    pointer-events: none;
+    opacity: 0;
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  body.sidebar-mini .nav-link[data-tip]:hover::after,
+  body.sidebar-mini .sidebar-summary[data-tip]:hover::after {
+    opacity: 1;
+    transform: translateY(-50%) scale(1);
+  }
+  /* Expanded group: its rail icon tooltip is redundant beside the open flyout */
+  body.sidebar-mini .sidebar-group[open] > summary[data-tip]::after {
+    display: none;
   }
   body.sidebar-mini main.md\:ml-60,
   body.sidebar-mini div.md\:ml-60 {

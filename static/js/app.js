@@ -7291,6 +7291,14 @@ function initApp() {
   }));
   $$("[data-goto]").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.goto)));
 
+  // Icon-only mini sidebar: every rail + flyout item carries its label as a data-tip
+  $$("#sidebar .nav-link, #sidebar .sidebar-summary").forEach((el) => {
+    if (!el.dataset.tip) {
+      const label = el.querySelector("span");
+      if (label) el.dataset.tip = label.textContent.trim();
+    }
+  });
+
   // Sidebar accordion: persist open state, position mini-mode flyout under its group
   const persistSidebarGroups = () => {
     localStorage.setItem("nb_sidebar_groups", JSON.stringify($$(".sidebar-group").filter((g) => g.open).map((g) => g.id)));
@@ -7302,6 +7310,10 @@ function initApp() {
     if (sub && sum) sub.style.top = Math.max(8, sum.getBoundingClientRect().top) + "px";
   };
   $$(".sidebar-group").forEach((g) => g.addEventListener("toggle", () => {
+    // Mini mode works like an accordion: only one flyout open at a time.
+    if (document.body.classList.contains("sidebar-mini") && g.open) {
+      $$(".sidebar-group").forEach((o) => { if (o !== g && o.open) o.open = false; });
+    }
     if (g.open) positionSidebarFlyout(g);
     persistSidebarGroups();
   }));
