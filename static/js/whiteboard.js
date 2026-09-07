@@ -356,6 +356,20 @@
     ink.innerHTML = "";
     state.drawings.forEach(function (d) {
       const pts = d.points || [];
+      if (pts.length < 1) return;
+      if (d.dot) {
+        const cx = Number(pts[0][0]) || 0;
+        const cy = Number(pts[0][1]) || 0;
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("cx", cx);
+        c.setAttribute("cy", cy);
+        c.setAttribute("r", Math.max(2.5, (d.width || STROKES.pen.width) / 2));
+        c.setAttribute("fill", d.color || state.color);
+        c.setAttribute("opacity", d.opacity != null ? d.opacity : 1);
+        c.setAttribute("vector-effect", "non-scaling-stroke");
+        ink.appendChild(c);
+        return;
+      }
       if (pts.length < 2) return;
       const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
       p.setAttribute("d", strokePathD(pts));
@@ -513,7 +527,11 @@
       edges: state.edges.map(function (e) {
         return { id: e.id, from: e.from, to: e.to, color: e.color, width: e.width };
       }),
-      drawings: state.drawings.map(function (d) { return { id: d.id, color: d.color, width: d.width, opacity: d.opacity, points: d.points }; }),
+      drawings: state.drawings.map(function (d) {
+        const o = { id: d.id, color: d.color, width: d.width, opacity: d.opacity, points: d.points };
+        if (d.dot) o.dot = true;
+        return o;
+      }),
     };
   }
 
@@ -1249,7 +1267,8 @@
 
     if (g.kind === "pen") {
       if (g.ink && g.ink.points.length < 3) {
-        g.ink.points.push([g.ink.points[0][0] + 0.01, g.ink.points[0][1] + 0.01]);
+        g.ink.dot = true;
+        if (g.ink.points.length === 1) g.ink.points.push([g.ink.points[0][0], g.ink.points[0][1]]);
       }
       endGesture();
       render();
