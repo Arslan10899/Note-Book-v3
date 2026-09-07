@@ -1,4 +1,4 @@
-/* Hide utility available before Tailwind CDN generates its stylesheet (prevents view flash on refresh).
+﻿/* Hide utility available before Tailwind CDN generates its stylesheet (prevents view flash on refresh).
    Zero specificity (:where) so responsive display utilities like sm:block always win over it. */
 :where(.hidden) {
   display: none;
@@ -25,7 +25,7 @@
   --radius: 0.625rem;
 }
 
-/* Popover surfaces (command palette, dropdowns) — slightly lifted card tone in light mode */
+/* Popover surfaces (command palette, dropdowns) â€” slightly lifted card tone in light mode */
 :root {
   --popover: 0 0% 100%;
   --popover-foreground: 240 10% 3.9%;
@@ -81,7 +81,7 @@
   z-index: 1;
 }
 
-/* Bento (color-only third theme) — soft modern pastel, low contrast.
+/* Bento (color-only third theme) â€” soft modern pastel, low contrast.
    Exact user palette (hex codes in comments). Overrides the light :root
    tokens so every hsl(var(--...))/hsl(var(--...)/...) consumer recolors
    itself without any layout changes. `.dark` is NOT present here, so
@@ -182,10 +182,10 @@
   border-color: transparent;
 }
 
-/* Top 4 metric (KPI) cards — muted pastel tones (desaturated warm palette)
+/* Top 4 metric (KPI) cards â€” muted pastel tones (desaturated warm palette)
    with a soft light sheen, soft rounded corners and a gentle hover lift
    (professional bento feel). The metric icon is a corner watermark (see
-   global .kpi-bg-icon) — no dots, no borders, no foreground chip. */
+   global .kpi-bg-icon) â€” no dots, no borders, no foreground chip. */
 .bento #view-dashboard > div:nth-of-type(1) > .card {
   position: relative;
   overflow: hidden;
@@ -232,7 +232,7 @@
 }
 
 /* Notes & workspace cards: one calm soft warm pastel (no rainbow cycle),
-   consistent everywhere — Notes grid, Recent Notes, Pages/Workspaces and
+   consistent everywhere â€” Notes grid, Recent Notes, Pages/Workspaces and
    the note rows inside a workspace. */
 .bento #notes-grid .card,
 .bento #recent-notes > button,
@@ -291,7 +291,7 @@
 html {
   -webkit-tap-highlight-color: transparent;
   /* Fluid root: all rem-based sizing (Tailwind spacing/type + custom overrides)
-     scales smoothly with viewport — ~15px on phones/laptops up to 17px on 4K.
+     scales smoothly with viewport â€” ~15px on phones/laptops up to 17px on 4K.
      Also keeps 125%/150% Windows display scaling from breaking the layout. */
   font-size: clamp(15px, 0.75rem + 0.3vw, 17px);
   text-size-adjust: 100%;
@@ -611,7 +611,7 @@ input[type="color"] {
   height: 15px;
 }
 
-/* ============ Notes pinboard — 3D glassmorphism sticky-notes ============ */
+/* ============ Notes pinboard â€” 3D glassmorphism sticky-notes ============ */
 
 /* Notebook-lined paper behind the Notes list */
 .notebook-bg {
@@ -627,7 +627,7 @@ input[type="color"] {
   background-image: repeating-linear-gradient(transparent, transparent 31px, #dfd3c0 31px, #dfd3c0 32px);
 }
 
-/* Glass card — frosted blur + soft depth + crisp inner edge */
+/* Glass card â€” frosted blur + soft depth + crisp inner edge */
 .note-card {
   position: relative;
   display: flex;
@@ -655,7 +655,7 @@ input[type="color"] {
   z-index: 20;
 }
 
-/* 3D thumbtack — radial sphere with inset shading + soft drop shadow */
+/* 3D thumbtack â€” radial sphere with inset shading + soft drop shadow */
 .note-pin {
   position: absolute;
   top: -11px;
@@ -676,7 +676,7 @@ input[type="color"] {
 .note-pin.purple { background: radial-gradient(circle at 30% 30%, #d391e2, #9a4fd0, #6b21b6); }
 .note-pin.red    { background: radial-gradient(circle at 30% 30%, #ff9b8f, #ef4444, #b91c1c); }
 
-/* Inner paper — solid pastel so the glass edge stays visible */
+/* Inner paper â€” solid pastel so the glass edge stays visible */
 .note-inner {
   position: relative;
   display: flex;
@@ -715,7 +715,7 @@ input[type="color"] {
 .note-num.blue   { color: #3b82f6; }
 .note-num.purple { color: #8b5cf6; }
 
-/* Glass action pill — appears on hover, top-right of the paper */
+/* Glass action pill â€” appears on hover, top-right of the paper */
 .note-actions {
   display: flex;
   gap: 2px;
@@ -790,7 +790,7 @@ input[type="color"] {
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-/* creatorChip() uses theme tokens — pin them to dark-on-paper inside the card */
+/* creatorChip() uses theme tokens â€” pin them to dark-on-paper inside the card */
 .note-meta .bg-muted,
 .note-meta .bg-secondary {
   background: rgba(255, 255, 255, 0.6);
@@ -806,7 +806,7 @@ input[type="color"] {
   white-space: nowrap;
 }
 
-/* Dark board: the paper fills the whole tile — no dark glass frame, only
+/* Dark board: the paper fills the whole tile â€” no dark glass frame, only
    soft light-pastel sticky notes glowing on the dark wall. */
 .dark .note-card {
   background: transparent;
@@ -838,7 +838,7 @@ input[type="color"] {
 .dark .note-actions .tool-btn:hover { background: rgba(0, 0, 0, 0.08); color: #211d19; }
 .dark .note-meta { border-top-color: rgba(0, 0, 0, 0.18); }
 
-/* Bento board — warm glass with the built-in pastel paper */
+/* Bento board â€” warm glass with the built-in pastel paper */
 .bento .note-card {
   background: rgba(255, 251, 240, 0.5);
 }
@@ -1179,7 +1179,7 @@ input[type="color"] {
   background: hsl(var(--secondary) / 0.45);
 }
 
-/* Sidebar 3-step theme switch — full sidebar: sliding-thumb segmented control */
+/* Sidebar 3-step theme switch â€” full sidebar: sliding-thumb segmented control */
 .sst-track {
   position: relative;
   display: grid;
@@ -1441,7 +1441,7 @@ input[type="color"] {
   padding: 1.25rem;
 }
 
-/* Full-screen detail editor (agents etc.) — uses the whole viewport */
+/* Full-screen detail editor (agents etc.) â€” uses the whole viewport */
 .dialog-backdrop-full { background: rgb(7 10 20 / .55); }
 
 .dialog-panel-full {
@@ -1909,7 +1909,7 @@ input[type="color"] {
 }
 
 .cal-hol::before {
-  content: "● ";
+  content: "â— ";
   font-size: 0.5rem;
   vertical-align: 1px;
 }
@@ -2021,7 +2021,7 @@ input[type="color"] {
 
 @media (min-width: 768px) {
   body.sidebar-mini #sidebar {
-    width: 4.5rem;
+    width: 3.25rem;
   }
   body.sidebar-mini #brand-toggle {
     justify-content: center;
@@ -2062,7 +2062,7 @@ input[type="color"] {
     display: flex;
     flex-direction: column;
     gap: 0.125rem;
-    margin: 0.125rem 0.375rem;
+    margin: 0.125rem 0.125rem;
     padding: 0.375rem 0 0.125rem;
     border-top: 1px solid hsl(var(--border));
     animation: miniSubIn 0.18s ease both;
@@ -2074,8 +2074,8 @@ input[type="color"] {
   body.sidebar-mini .sidebar-group[open] > .sidebar-sub .nav-link {
     justify-content: center;
     gap: 0;
-    width: 2.25rem;
-    height: 2.25rem;
+    width: 2rem;
+    height: 2rem;
     margin-inline: auto;
     padding: 0;
     border-radius: 8px;
@@ -2084,9 +2084,10 @@ input[type="color"] {
   body.sidebar-mini .sidebar-group[open] > .sidebar-sub .nav-link > span {
     display: none;
   }
-  /* Mini rail must never show its own scrollbar — keep it invisible and clean */
+  /* Mini rail must never show its own scrollbar - keep it invisible and clean */
   body.sidebar-mini nav {
     overflow-x: hidden;
+    padding: 0.5rem;
     scrollbar-width: none;
   }
   body.sidebar-mini nav::-webkit-scrollbar {
@@ -2128,7 +2129,7 @@ input[type="color"] {
   }
   body.sidebar-mini main.md\:ml-60,
   body.sidebar-mini div.md\:ml-60 {
-    margin-left: 4.5rem;
+    margin-left: 3.25rem;
   }
 }
 
@@ -2170,7 +2171,7 @@ body.sidebar-open #sidebar-overlay {
   border-radius: var(--radius);
 }
 
-/* Focus (reading) mode: full-width details reading view — content fills the
+/* Focus (reading) mode: full-width details reading view â€” content fills the
    entire available space instead of a narrow centered column. */
 #note-reader.nr-focus #viewer-main-card {
   width: 100%;
@@ -2946,20 +2947,20 @@ body.sidebar-open #sidebar-overlay {
    Responsive / Fluid scaling (enterprise-grade across monitors & laptops)
    ========================================================================== */
 
-/* 1. Fluid root — every rem-sized value scales smoothly between phones and
+/* 1. Fluid root â€” every rem-sized value scales smoothly between phones and
    laptops instead of jumping at fixed pixel steps. */
 html {
   font-size: clamp(15px, 0.85vw + 11px, 17px);
 }
 
-/* 2. Container boundary — content must never stretch across ultra-wides */
+/* 2. Container boundary â€” content must never stretch across ultra-wides */
 main {
   width: 100%;
   max-width: 1600px;
   margin-inline: auto;
 }
 
-/* 3. Sidebar fluidity — proportional width on big screens, compact on laptops */
+/* 3. Sidebar fluidity â€” proportional width on big screens, compact on laptops */
 @media (min-width: 768px) {
   body:not(.sidebar-mini) #sidebar { width: clamp(15rem, 17vw, 19rem); }
   body:not(.sidebar-mini) div.md\:ml-60
@@ -2967,12 +2968,12 @@ main {
   #chat-sessions-col { width: clamp(14rem, 18vw, 18rem); }
 
   /* Mini sidebar: compact but still scales with the fluid root */
-  body.sidebar-mini #sidebar { width: 4.5rem; }
+  body.sidebar-mini #sidebar { width: 3.25rem; }
   body.sidebar-mini div.md\:ml-60,
-  body.sidebar-mini main.md\:ml-60 { margin-left: 4.5rem; }
+  body.sidebar-mini main.md\:ml-60 { margin-left: 3.25rem; }
 }
 
-/* 3. Card grids — Notes uses fixed responsive columns (1/2/2/3/4) for the
+/* 3. Card grids â€” Notes uses fixed responsive columns (1/2/2/3/4) for the
    pinboard; Pages keeps auto-fit so the workspace tiles always reflow. */
 #notes-grid,
 #pages-grid {
@@ -3005,7 +3006,7 @@ main {
 .dialog-panel,
 .card { min-width: 0; }
 
-/* 1. Fluid headings — clamp so large monitors get larger, readable type */
+/* 1. Fluid headings â€” clamp so large monitors get larger, readable type */
 .viewer-body h1 { font-size: clamp(1.6rem, 1.2rem + 1vw, 2.2rem); }
 .viewer-body h2 { font-size: clamp(1.3rem, 1.05rem + 0.8vw, 1.7rem); }
 .viewer-body h3 { font-size: clamp(1.1rem, 0.95rem + 0.6vw, 1.4rem); }
@@ -3013,7 +3014,7 @@ main {
 .note-editor h2 { font-size: clamp(1.2rem, 1rem + 0.7vw, 1.5rem); }
 .note-editor h3 { font-size: clamp(1.05rem, 0.9rem + 0.5vw, 1.25rem); }
 
-/* 4. OS zoom / DPI safety — the chat send row wraps instead of hiding
+/* 4. OS zoom / DPI safety â€” the chat send row wraps instead of hiding
    controls, and text cells never push the layout wider than the screen. */
 #chat-form > div:last-child { flex-wrap: wrap; }
 #chat-input { flex: 1 1 10rem; min-width: 0; }
