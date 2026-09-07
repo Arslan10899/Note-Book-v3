@@ -1911,12 +1911,14 @@ async function renderNotesGrid() {
   grid.innerHTML = items
     .map((n, i) => {
       const rot = ((((n.id % 97) * 37) % 9) - 4).toFixed(1); // stable -4°..4° per note
+      const lines = (n.id % 3) + 2;      // 2..4 text lines → varied card height
+      const lift = (n.id % 5) * 6;       // 0,6,12,18,24px vertical stagger
       const palIdx = i % 3;
       const palName = ["orange", "blue", "purple"][palIdx];
       const pinCls = n.pinned ? "red" : palName;
       const tags = (n.tags || "").split(",").filter((t) => t.trim());
       return `
-      <div class="note-card group" data-note="${n.id}" style="--rot:${rot}deg">
+      <div class="note-card group" data-note="${n.id}" style="--rot:${rot}deg;--lines:${lines};--lift:${lift}px">
         <span class="note-pin ${pinCls}" title="${n.pinned ? "Pinned" : ""}"></span>
         <div class="note-inner ${palName}">
           <div class="note-top">

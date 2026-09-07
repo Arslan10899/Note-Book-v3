@@ -641,6 +641,7 @@ input[type="color"] {
     0 18px 28px -14px rgba(0, 0, 0, 0.16),
     inset 0 0 0 1px rgba(255, 255, 255, 0.85);
   transform: rotate(var(--rot, 0deg));
+  margin-top: var(--lift, 0px);
   transition: transform .22s ease, box-shadow .22s ease;
   cursor: pointer;
 }
@@ -686,6 +687,7 @@ input[type="color"] {
   border-radius: 12px;
   color: #2b2620;
 }
+.note-inner.orange,
 .note-inner.peach   { background: #fff1e6; }
 .note-inner.blue    { background: #edf2ff; }
 .note-inner.purple  { background: #f4f0ff; }
@@ -756,8 +758,7 @@ input[type="color"] {
   -webkit-line-clamp: 4;
   -webkit-box-orient: vertical;
   overflow: hidden;
-  flex: 1;
-  min-height: calc(1.35rem * 2);
+  min-height: calc(1.5em * var(--lines, 4));
   margin-top: 0.5rem;
   font-size: 0.8125rem;
   line-height: 1.5;
@@ -825,6 +826,7 @@ input[type="color"] {
   border-radius: 18px;
   padding: 20px 16px 12px;
 }
+.dark .note-inner.orange,
 .dark .note-inner.peach   { background: #ffe3cc; }
 .dark .note-inner.blue    { background: #dce8ff; }
 .dark .note-inner.purple  { background: #ece3fb; }
@@ -837,6 +839,7 @@ input[type="color"] {
 .bento .note-card {
   background: rgba(255, 251, 240, 0.5);
 }
+.bento .note-inner.orange,
 .bento .note-inner.peach  { background: #fbe8d6; }
 .bento .note-inner.blue   { background: #e6edfb; }
 .bento .note-inner.purple { background: #efeaf7; }
@@ -2760,6 +2763,8 @@ main {
 #pages-grid {
   grid-template-columns: repeat(1, minmax(0, 1fr));
 }
+/* Organic pinboard: cards keep their natural height + stagger vertically */
+#notes-grid { align-items: start; }
 @media (min-width: 640px) {
   #notes-grid,
   #pages-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
