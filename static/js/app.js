@@ -274,6 +274,10 @@ function switchViewShell(name) {
   $$(".view").forEach((v) => v.classList.add("hidden"));
   $(`#view-${name}`)?.classList.remove("hidden");
   $$(".nav-link").forEach((n) => n.classList.toggle("active", n.dataset.view === name));
+  // Keep the parent accordion group open so the active item is always visible.
+  const activeNav = $$(".nav-link").find((n) => n.dataset.view === name);
+  const activeGroup = activeNav && activeNav.closest(".sidebar-group");
+  if (activeGroup && !activeGroup.open) activeGroup.open = true;
   $("#page-title").textContent = VIEW_TITLES[name] || name;
   document.body.classList.remove("sidebar-open");
 }
@@ -7270,8 +7274,32 @@ function initApp() {
   $$(".nav-link").forEach((n) => n.addEventListener("click", (e) => {
     e.preventDefault();
     switchView(n.dataset.view);
+    // Mini sidebar: the group was a flyout — dismiss it after picking a link.
+    if (document.body.classList.contains("sidebar-mini")) {
+      const g = n.closest(".sidebar-group");
+      if (g) g.open = false;
+    }
   }));
   $$("[data-goto]").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.goto)));
+
+  // Sidebar accordion: persist open state, position mini-mode flyout under its group
+  const persistSidebarGroups = () => {
+    localStorage.setItem("nb_sidebar_groups", JSON.stringify($$(".sidebar-group").filter((g) => g.open).map((g) => g.id)));
+  };
+  const positionSidebarFlyout = (g) => {
+    if (!document.body.classList.contains("sidebar-mini")) return;
+    const sub = g.querySelector(".sidebar-sub");
+    const sum = g.querySelector(".sidebar-summary");
+    if (sub && sum) sub.style.top = Math.max(8, sum.getBoundingClientRect().top) + "px";
+  };
+  $$(".sidebar-group").forEach((g) => g.addEventListener("toggle", () => {
+    if (g.open) positionSidebarFlyout(g);
+    persistSidebarGroups();
+  }));
+  try {
+    const saved = JSON.parse(localStorage.getItem("nb_sidebar_groups") || "[]");
+    $$(".sidebar-group").forEach((g) => { g.open = saved.includes(g.id); });
+  } catch (_) { /* ignore malformed stored state */ }
 
   $("#sidebar-toggle").addEventListener("click", () => document.body.classList.toggle("sidebar-open"));
   $("#sidebar-overlay").addEventListener("click", () => document.body.classList.remove("sidebar-open"));
