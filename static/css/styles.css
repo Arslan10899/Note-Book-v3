@@ -2084,6 +2084,14 @@ input[type="color"] {
   body.sidebar-mini .sidebar-group[open] > .sidebar-sub .nav-link > span {
     display: none;
   }
+  /* Mini rail must never show its own scrollbar — keep it invisible and clean */
+  body.sidebar-mini nav {
+    overflow-x: hidden;
+    scrollbar-width: none;
+  }
+  body.sidebar-mini nav::-webkit-scrollbar {
+    display: none;
+  }
   /* Icon-only rail + flyout: hover shows a floating name popup */
   body.sidebar-mini .nav-link[data-tip],
   body.sidebar-mini .sidebar-summary[data-tip] {
