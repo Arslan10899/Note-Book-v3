@@ -465,9 +465,14 @@
 
   function load() {
     setStatus("Loading…", "busy");
+    const snap = JSON.stringify(serialize());
     return fetch("/api/whiteboard", { method: "GET", headers: { "Content-Type": "application/json" } })
       .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("load failed")); })
       .then(function (res) {
+        if (dirty || JSON.stringify(serialize()) !== snap) {
+          setStatus("Loaded, kept local changes", "ok");
+          return true;
+        }
         const d = res.data || {};
         state.nodes = Array.isArray(d.nodes) ? d.nodes : [];
         state.drawings = Array.isArray(d.drawings) ? d.drawings : [];
@@ -709,8 +714,8 @@
         src: src,
       };
       state.nodes.push(n);
-      state.selected = n.id;
       selectTool("select");
+      state.selected = n.id;
       render();
       markDirty();
       toast("Image added");
