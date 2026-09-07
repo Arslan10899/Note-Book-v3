@@ -3762,6 +3762,7 @@ html, body { overflow-x: clip; }
 }
 .wb-node.wb-line { background: transparent !important; }
 .wb-node.wb-line svg { position: absolute; inset: 0; overflow: visible; }
+.wb-shape-stroke { position: absolute; inset: 0; overflow: visible; }
 
 .wb-node {
   filter: drop-shadow(0 2px 3px rgba(0, 0, 0, 0.16));

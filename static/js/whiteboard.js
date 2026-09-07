@@ -45,6 +45,7 @@
     tool: "select",
     stroke: "pen",
     color: "#111827",
+    fill: "solid",        // "solid" | "transparent"
     selected: null,   // node id
     edgeSel: null,    // edge id
   };
@@ -96,6 +97,79 @@
       x: (cx - r.left - state.view.x) / state.view.zoom,
       y: (cy - r.top - state.view.y) / state.view.zoom,
     };
+  }
+
+  const SHAPE_PATHS = {
+    rect:     "M0 0 H100 V100 H0 Z",
+    triangle: "M50 0 L100 100 L0 100 Z",
+    diamond:  "M50 0 L100 50 L50 100 L0 50 Z",
+    star:     "M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z",
+    hexagon:  "M25 0 L75 0 L100 50 L75 100 L25 100 L0 50 Z",
+    arrow:    "M0 15 L60 15 L60 0 L100 50 L60 100 L60 85 L0 85 Z",
+  };
+
+  function shapeStrokeEl(type, color) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "wb-shape-stroke");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("overflow", "visible");
+    svg.setAttribute("preserveAspectRatio", "none");
+    const shape = document.createElementNS(ns, type === "ellipse" ? "ellipse" : "path");
+    if (type === "ellipse") {
+      shape.setAttribute("cx", 50);
+      shape.setAttribute("cy", 50);
+      shape.setAttribute("rx", 48);
+      shape.setAttribute("ry", 48);
+    } else {
+      shape.setAttribute("d", SHAPE_PATHS[type] || SHAPE_PATHS.rect);
+    }
+    shape.setAttribute("fill", "none");
+    shape.setAttribute("stroke", color);
+    shape.setAttribute("stroke-width", 3.5);
+    shape.setAttribute("stroke-linejoin", "round");
+    shape.setAttribute("stroke-linecap", "round");
+    svg.appendChild(shape);
+    return svg;
+  }
+
+  function toggleFill() {
+    state.fill = state.fill === "transparent" ? "solid" : "transparent";
+    renderFillButton();
+    setStatus(state.fill === "transparent" ? "Fill: transparent" : "Fill: solid", state.fill === "transparent" ? "warn" : "ok");
+  }
+
+  function renderFillButton() {
+    const b = $("#wb-fill-btn");
+    if (!b) return;
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    const square = document.createElementNS(ns, "rect");
+    square.setAttribute("x", "3");
+    square.setAttribute("y", "3");
+    square.setAttribute("width", "18");
+    square.setAttribute("height", "18");
+    square.setAttribute("rx", "2");
+    if (state.fill === "transparent") {
+      square.setAttribute("fill", "none");
+    } else {
+      square.setAttribute("fill", "currentColor");
+      square.setAttribute("fill-opacity", "0.22");
+    }
+    svg.appendChild(square);
+    b.innerHTML = "";
+    b.appendChild(svg);
+    b.title = state.fill === "transparent" ? "Fill: transparent (F)" : "Fill: solid (F)";
   }
 
   function toScreen(p) {
@@ -205,7 +279,11 @@
       svg.appendChild(ln);
       el.appendChild(svg);
     } else if (SHAPES.indexOf(type) !== -1) {
-      el.style.background = n.color || state.color;
+      if (n.fill === "transparent") {
+        el.appendChild(shapeStrokeEl(type, n.color || state.color));
+      } else {
+        el.style.background = n.color || state.color;
+      }
       if (type === "ellipse") el.style.borderRadius = "50%";
     } else {
       el.style.background = n.color || state.color;
@@ -426,6 +504,7 @@
       view: state.view,
       nodes: state.nodes.map(function (n) {
         const o = { id: n.id, type: n.type, x: n.x, y: n.y, w: n.w, h: n.h, z: n.z, color: n.color, text: n.text };
+        if (n.fill) o.fill = n.fill;
         if (n.type === "image") o.src = n.src;
         if (n.type === "image" && n.w0 && n.h0) { o.w0 = n.w0; o.h0 = n.h0; }
         if (n.type === "table") o.rows = n.rows;
@@ -880,6 +959,7 @@
       pre.style.left = w.x + "px";
       pre.style.top = w.y + "px";
       pre.style.background = state.color;
+      if (state.fill === "transparent") pre.style.opacity = "0.4";
       if (state.tool === "line") pre.style.background = "transparent";
       $("#wb-nodes").appendChild(pre);
       g.kind = "shape";
@@ -1106,8 +1186,9 @@
       const h = Math.abs(w.x - g.from.x);
       const v = Math.abs(w.y - g.from.y);
       if (h > 10 || v > 10) {
+        const id = nextId();
         state.nodes.push({
-          id: nextId(),
+          id: id,
           type: "line",
           x: Math.min(g.from.x, w.x),
           y: Math.min(g.from.y, w.y),
@@ -1117,6 +1198,8 @@
           color: state.color,
           text: "",
         });
+        state.selected = id;
+        state.edgeSel = null;
       }
       endGesture();
       render();
@@ -1131,8 +1214,9 @@
       const v = Math.abs(w.y - g.from.y);
       const type = g.shapeType;
       if (h > 10 || v > 10) {
+        const id = nextId();
         state.nodes.push({
-          id: nextId(),
+          id: id,
           type: type,
           x: x,
           y: y,
@@ -1141,7 +1225,10 @@
           z: maxZ() + 1,
           color: state.color,
           text: "",
+          fill: state.fill,
         });
+        state.selected = id;
+        state.edgeSel = null;
         markDirty();
       }
       endGesture();
@@ -1292,6 +1379,11 @@
       return;
     }
 
+    if (key === "f" && !e.altKey) {
+      toggleFill();
+      return;
+    }
+
     if (e.key === "Delete" || e.key === "Backspace") {
       e.preventDefault();
       deleteSelected();
@@ -1382,7 +1474,15 @@
     $("#wb-color-dot").style.background = state.color;
     $("#wb-color-picker").value = state.color;
     setBrush(state.stroke, false);
+    renderFillButton();
+    $("#wb-fill-btn").addEventListener("click", function (e) { e.stopPropagation(); toggleFill(); });
     $("#wb-color-picker").addEventListener("input", function (e) { applyColor(e.target.value); });
+
+    $("#wb-delete").addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (state.selected || state.edgeSel) deleteSelected();
+      else toast("Select a shape to remove", "error");
+    });
 
     const fileInput = $("#wb-image-input");
     fileInput.addEventListener("change", function () {
