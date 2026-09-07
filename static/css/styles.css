@@ -611,6 +611,227 @@ input[type="color"] {
   height: 15px;
 }
 
+/* ============ Notes pinboard — 3D glassmorphism sticky-notes ============ */
+
+/* Notebook-lined paper behind the Notes list */
+.notebook-bg {
+  background-color: #fbfaf6;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, #e8e6e3 31px, #e8e6e3 32px);
+}
+.dark .notebook-bg {
+  background-color: #16171b;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, #24252b 31px, #24252b 32px);
+}
+.bento .notebook-bg {
+  background-color: #f0e7d9;
+  background-image: repeating-linear-gradient(transparent, transparent 31px, #dfd3c0 31px, #dfd3c0 32px);
+}
+
+/* Glass card — frosted blur + soft depth + crisp inner edge */
+.note-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  border-radius: 18px;
+  background: rgba(255, 255, 255, 0.55);
+  -webkit-backdrop-filter: blur(10px);
+  backdrop-filter: blur(10px);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.06),
+    0 18px 28px -14px rgba(0, 0, 0, 0.16),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.85);
+  transform: rotate(var(--rot, 0deg));
+  transition: transform .22s ease, box-shadow .22s ease;
+  cursor: pointer;
+}
+.note-card > * { min-width: 0; }
+.note-card:hover {
+  transform: translateY(-6px) rotate(var(--rot, 0deg)) scale(1.02);
+  box-shadow:
+    0 12px 18px -6px rgba(0, 0, 0, 0.14),
+    0 30px 45px -16px rgba(0, 0, 0, 0.24),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.95);
+  z-index: 20;
+}
+
+/* 3D thumbtack — radial sphere with inset shading + soft drop shadow */
+.note-pin {
+  position: absolute;
+  top: -11px;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  z-index: 5;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  box-shadow:
+    -1px 4px 6px rgba(0, 0, 0, 0.22),
+    inset -2px -2px 4px rgba(0, 0, 0, 0.28),
+    inset 2px 2px 5px rgba(255, 255, 255, 0.5);
+}
+.note-pin.orange { background: radial-gradient(circle at 30% 30%, #ffc76e, #fb8c2a, #e85d04); }
+.note-pin.blue   { background: radial-gradient(circle at 30% 30%, #7cc0ff, #3f8bff, #1d5fd6); }
+.note-pin.purple { background: radial-gradient(circle at 30% 30%, #d391e2, #9a4fd0, #6b21b6); }
+.note-pin.red    { background: radial-gradient(circle at 30% 30%, #ff9b8f, #ef4444, #b91c1c); }
+
+/* Inner paper — solid pastel so the glass edge stays visible */
+.note-inner {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  margin: 16px;
+  padding: 14px 14px 10px;
+  border-radius: 12px;
+  color: #2b2620;
+}
+.note-inner.peach   { background: #fff1e6; }
+.note-inner.blue    { background: #edf2ff; }
+.note-inner.purple  { background: #f4f0ff; }
+
+.note-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 0.5rem;
+}
+
+/* Handwritten sequence number (Caveat) */
+.note-num {
+  font-family: 'Caveat', 'Segoe Script', 'Comic Sans MS', cursive;
+  font-size: 1.9rem;
+  line-height: 1;
+  font-weight: 700;
+  letter-spacing: 0.01em;
+  margin-bottom: 3px;
+  display: block;
+  -webkit-user-select: none;
+  user-select: none;
+}
+.note-num.orange { color: #f97316; }
+.note-num.blue   { color: #3b82f6; }
+.note-num.purple { color: #8b5cf6; }
+
+/* Glass action pill — appears on hover, top-right of the paper */
+.note-actions {
+  display: flex;
+  gap: 2px;
+  padding: 3px;
+  border-radius: 9999px;
+  background: rgba(255, 255, 255, 0.55);
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
+  opacity: 0;
+  transform: translateY(-2px);
+  transition: opacity .18s ease, transform .18s ease;
+}
+.note-card:hover .note-actions,
+.note-card:focus-within .note-actions {
+  opacity: 1;
+  transform: none;
+}
+.note-actions .tool-btn {
+  width: 26px;
+  height: 26px;
+  min-width: 26px;
+}
+.note-actions .tool-btn:hover { background: rgba(0, 0, 0, 0.08); }
+.note-actions .tool-btn.danger:hover { background: rgba(220, 38, 38, 0.12); color: #dc2626; }
+
+.note-title {
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  font-size: 0.875rem;
+  font-weight: 600;
+  line-height: 1.35;
+  color: #2b2620;
+  overflow-wrap: anywhere;
+}
+
+.note-text {
+  display: -webkit-box;
+  -webkit-line-clamp: 4;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+  flex: 1;
+  min-height: calc(1.35rem * 2);
+  margin-top: 0.5rem;
+  font-size: 0.8125rem;
+  line-height: 1.5;
+  color: #565049;
+  overflow-wrap: anywhere;
+}
+
+.note-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.375rem;
+  margin-top: 0.75rem;
+  padding-top: 0.625rem;
+  border-top: 1px dashed rgba(0, 0, 0, 0.12);
+}
+.note-chip {
+  display: inline-flex;
+  align-items: center;
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.6);
+  padding: 1px 6px;
+  font-size: 10px;
+  font-weight: 500;
+  color: #5a5349;
+  border: 1px solid rgba(0, 0, 0, 0.06);
+  max-width: 130px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* creatorChip() uses theme tokens — pin them to dark-on-paper inside the card */
+.note-meta .bg-muted,
+.note-meta .bg-secondary {
+  background: rgba(255, 255, 255, 0.6);
+  color: #5a5349;
+}
+.note-meta .text-cyan-600 { color: #0e7490; }
+.note-time {
+  margin-left: auto;
+  text-align: right;
+  font-size: 10px;
+  line-height: 1.35;
+  color: rgba(70, 62, 54, 0.66);
+  white-space: nowrap;
+}
+
+/* Dark board keeps the paper light — sticky notes glow on dark */
+.dark .note-card {
+  background: rgba(47, 49, 58, 0.42);
+  box-shadow:
+    0 4px 6px -1px rgba(0, 0, 0, 0.4),
+    0 18px 28px -14px rgba(0, 0, 0, 0.55),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.12);
+}
+.dark .note-card:hover {
+  box-shadow:
+    0 12px 18px -6px rgba(0, 0, 0, 0.5),
+    0 30px 45px -16px rgba(0, 0, 0, 0.6),
+    inset 0 0 0 1px rgba(255, 255, 255, 0.18);
+}
+.dark .note-actions { background: rgba(20, 21, 26, 0.45); border-color: rgba(255, 255, 255, 0.1); }
+.dark .note-actions .tool-btn { color: #d4d4d8; }
+.dark .note-actions .tool-btn:hover { background: rgba(255, 255, 255, 0.1); color: #fff; }
+.dark .note-meta { border-top-color: rgba(0, 0, 0, 0.18); }
+
+/* Bento board — warm glass with the built-in pastel paper */
+.bento .note-card {
+  background: rgba(255, 251, 240, 0.5);
+}
+.bento .note-inner.peach  { background: #fbe8d6; }
+.bento .note-inner.blue   { background: #e6edfb; }
+.bento .note-inner.purple { background: #efeaf7; }
+
 .task-tab {
   border-radius: calc(var(--radius) - 4px);
   padding: 0.375rem 0.875rem;
@@ -2524,11 +2745,24 @@ main {
   body.sidebar-mini main.md\:ml-60 { margin-left: 4.5rem; }
 }
 
-/* 3. Card grids — auto-fit so Notes / Pages / Web-portals / Agents reflow to
-   any width (overrides the fixed sm:/lg:/xl: breakpoints; no overflow). */
+/* 3. Card grids — Notes uses fixed responsive columns (1/2/2/3/4) for the
+   pinboard; Pages keeps auto-fit so the workspace tiles always reflow. */
 #notes-grid,
 #pages-grid {
-  grid-template-columns: repeat(auto-fit, minmax(min(100%, 300px), 1fr));
+  grid-template-columns: repeat(1, minmax(0, 1fr));
+}
+@media (min-width: 640px) {
+  #notes-grid,
+  #pages-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 768px) {
+  #notes-grid { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+}
+@media (min-width: 1024px) {
+  #notes-grid { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+}
+@media (min-width: 1280px) {
+  #notes-grid { grid-template-columns: repeat(4, minmax(0, 1fr)); }
 }
 #portals-grid {
   grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr));

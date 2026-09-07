@@ -1909,34 +1909,35 @@ async function renderNotesGrid() {
     return;
   }
   grid.innerHTML = items
-    .map(
-      (n) => `
-      <div class="card group cursor-pointer p-4 transition-shadow hover:shadow-md" data-note="${n.id}">
-        <div class="flex items-start justify-between gap-2">
-          <h4 class="min-w-0 flex-1 truncate text-sm font-semibold">${escapeHtml(n.title)}</h4>
-          ${n.pinned ? `<svg class="shrink-0 text-yellow-500" xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="currentColor" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 17v5"/><path d="M9 10.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24V16a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1v-.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V7a1 1 0 0 1 1-1 2 2 0 0 0 0-4H8a2 2 0 0 0 0 4 1 1 0 0 1 1 1z"/></svg>` : ""}
+    .map((n, i) => {
+      const rot = ((((n.id % 97) * 37) % 9) - 4).toFixed(1); // stable -4°..4° per note
+      const palIdx = i % 3;
+      const palName = ["orange", "blue", "purple"][palIdx];
+      const pinCls = n.pinned ? "red" : palName;
+      const tags = (n.tags || "").split(",").filter((t) => t.trim());
+      return `
+      <div class="note-card group" data-note="${n.id}" style="--rot:${rot}deg">
+        <span class="note-pin ${pinCls}" title="${n.pinned ? "Pinned" : ""}"></span>
+        <div class="note-inner ${palName}">
+          <div class="note-top">
+            <span class="note-num ${palName}">${String(i + 1).padStart(2, "0")}</span>
+            <div class="note-actions">
+              <button class="tool-btn" data-act="view" title="View"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
+              ${canWrite() ? `<button class="tool-btn" data-act="edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
+              ${isAdminUser() ? `<button class="tool-btn danger" data-act="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
+            </div>
+          </div>
+          <h4 class="note-title">${escapeHtml(n.title)}</h4>
+          <p class="note-text">${escapeHtml(stripHtml(n.content)) || "Empty note"}</p>
+          <div class="note-meta">
+            ${tags.slice(0, 3).map((t) => `<span class="note-chip">${escapeHtml(t.trim())}</span>`).join("")}
+            ${n.page_id ? `<span class="note-chip" title="In page: ${escapeHtml(pageName(n.page_id))}">${escapeHtml(pageName(n.page_id))}</span>` : ""}
+            ${creatorChip(n)}
+            <span class="note-time" title="Created ${fmtStampFull(n.created_at)}">${relTime(n.updated_at)}<br><span class="opacity-70">${fmtStampShort(n.created_at)}</span></span>
+          </div>
         </div>
-        <p class="mt-1 line-clamp-3 min-h-[42px] text-xs leading-relaxed text-muted-foreground">${escapeHtml(stripHtml(n.content)) || "Empty note"}</p>
-        <div class="mt-3 flex items-center gap-1.5">
-          ${(n.tags || "")
-            .split(",")
-            .filter((t) => t.trim())
-            .slice(0, 3)
-            .map((t) => `<span class="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">${escapeHtml(t.trim())}</span>`)
-            .join("")}
-          ${n.page_id ? `<span class="max-w-[110px] truncate rounded-md bg-primary/10 px-1.5 py-0.5 text-[10px] font-medium text-primary" title="In page: ${escapeHtml(pageName(n.page_id))}">${escapeHtml(pageName(n.page_id))}</span>` : ""}
-          ${creatorChip(n)}
-          <span class="ml-auto shrink-0 text-right text-[10px] leading-tight text-muted-foreground" title="Created ${fmtStampFull(n.created_at)}">
-            ${relTime(n.updated_at)}<br><span class="opacity-70">Created ${fmtStampShort(n.created_at)}</span>
-          </span>
-        </div>
-        <div class="mt-3 flex items-center gap-1 border-t border-border/70 pt-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-          <button class="tool-btn h-7 min-w-7" data-act="view" title="View"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M2.062 12.348a1 1 0 0 1 0-.696 10.75 10.75 0 0 1 19.876 0 1 1 0 0 1 0 .696 10.75 10.75 0 0 1-19.876 0"/><circle cx="12" cy="12" r="3"/></svg></button>
-          ${canWrite() ? `<button class="tool-btn h-7 min-w-7" data-act="edit" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
-          ${isAdminUser() ? `<button class="tool-btn h-7 min-w-7 hover:text-destructive" data-act="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
-        </div>
-      </div>`
-    )
+      </div>`;
+    })
     .join("");
 }
 
