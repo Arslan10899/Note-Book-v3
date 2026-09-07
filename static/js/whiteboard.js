@@ -232,6 +232,10 @@
 
   function endGesture() {
     g.kind = null;
+    g.node = null;
+    g.preview = null;
+    g.ink = null;
+    g.inkEl = null;
     document.removeEventListener("mousemove", onMove);
     document.removeEventListener("mouseup", onUp);
     document.body.style.cursor = "";
@@ -396,8 +400,20 @@
       };
       state.drawings.push(d);
       render();
+      // Create a live path so the stroke is visible while dragging
+      const ink = $("#wb-ink");
+      const stroke = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      stroke.setAttribute("d", strokePathD(d.points));
+      stroke.setAttribute("fill", "none");
+      stroke.setAttribute("stroke", d.color);
+      stroke.setAttribute("stroke-width", d.width);
+      stroke.setAttribute("stroke-linecap", "round");
+      stroke.setAttribute("stroke-linejoin", "round");
+      stroke.setAttribute("vector-effect", "non-scaling-stroke");
+      ink.appendChild(stroke);
       g.kind = "pen";
       g.ink = d;
+      g.inkEl = stroke;
       beginGesture();
       return;
     }
@@ -459,8 +475,7 @@
 
     if (g.kind === "pen" && g.ink) {
       g.ink.points.push([w.x, w.y]);
-      const last = $("#wb-ink path:last-of-type");
-      if (last) last.setAttribute("d", strokePathD(g.ink.points));
+      if (g.inkEl) g.inkEl.setAttribute("d", strokePathD(g.ink.points));
       return;
     }
 
