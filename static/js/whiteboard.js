@@ -883,18 +883,22 @@
     g.inkEl = null;
     g.edge = null;
     g.sizeFrom = null;
-    document.removeEventListener("mousemove", onMove);
-    document.removeEventListener("mouseup", onUp);
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onUp);
     document.body.style.cursor = "";
   }
 
   function beginGesture() {
-    document.addEventListener("mousemove", onMove);
-    document.addEventListener("mouseup", onUp);
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
   }
 
   function onDown(e) {
     if (!active) return;
+    if (e.isPrimary === false) return;
+    if (e.pointerType && e.pointerType !== "mouse") e.preventDefault();
     if (e.button !== 0 && e.button !== 1) return;
     const cx = e.clientX;
     const cy = e.clientY;
@@ -1499,7 +1503,7 @@
 
   function bind() {
     const stage = $("#wb-stage");
-    stage.addEventListener("mousedown", onDown);
+    stage.addEventListener("pointerdown", onDown);
     stage.addEventListener("wheel", onWheel, { passive: false });
 
     $("#wb-nodes").addEventListener("focusout", onNodeBlur, true);
