@@ -2093,6 +2093,16 @@ input[type="color"] {
   body.sidebar-mini nav::-webkit-scrollbar {
     display: none;
   }
+  /* Full sidebar: quiet, thin nav scrollbar so it never draws attention */
+  body:not(.sidebar-mini) #sidebar nav {
+    scrollbar-width: thin;
+  }
+  body:not(.sidebar-mini) #sidebar nav::-webkit-scrollbar { width: 5px; }
+  body:not(.sidebar-mini) #sidebar nav::-webkit-scrollbar-thumb {
+    background: hsl(var(--border));
+    border-radius: 999px;
+  }
+  body:not(.sidebar-mini) #sidebar nav::-webkit-scrollbar-track { background: transparent; }
   /* Icon-only rail + flyout: hover shows a floating name popup */
   body.sidebar-mini .nav-link[data-tip],
   body.sidebar-mini .sidebar-summary[data-tip] {
@@ -2962,9 +2972,9 @@ main {
 
 /* 3. Sidebar fluidity â€” proportional width on big screens, compact on laptops */
 @media (min-width: 768px) {
-  body:not(.sidebar-mini) #sidebar { width: clamp(15rem, 17vw, 19rem); }
+  body:not(.sidebar-mini) #sidebar { width: clamp(13.5rem, 16vw, 16.5rem); }
   body:not(.sidebar-mini) div.md\:ml-60
-  , body:not(.sidebar-mini) main.md\:ml-60 { margin-left: clamp(15rem, 17vw, 19rem); }
+  , body:not(.sidebar-mini) main.md\:ml-60 { margin-left: clamp(13.5rem, 16vw, 16.5rem); }
   #chat-sessions-col { width: clamp(14rem, 18vw, 18rem); }
 
   /* Mini sidebar: compact but still scales with the fluid root */
