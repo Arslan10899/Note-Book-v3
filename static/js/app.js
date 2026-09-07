@@ -7283,10 +7283,12 @@ function initApp() {
   $$(".nav-link").forEach((n) => n.addEventListener("click", (e) => {
     e.preventDefault();
     switchView(n.dataset.view);
-    // Mini sidebar: the group was a flyout — dismiss it after picking a link.
+    // Mini sidebar: close the in-rail submenu after picking a link, name popup + toast.
     if (document.body.classList.contains("sidebar-mini")) {
       const g = n.closest(".sidebar-group");
       if (g) g.open = false;
+      const label = n.querySelector("span");
+      if (label) toast(label.textContent.trim());
     }
   }));
   $$("[data-goto]").forEach((b) => b.addEventListener("click", () => switchView(b.dataset.goto)));
@@ -7299,22 +7301,15 @@ function initApp() {
     }
   });
 
-  // Sidebar accordion: persist open state, position mini-mode flyout under its group
+  // Sidebar accordion: persist open state; mini-mode shows an in-rail submenu
   const persistSidebarGroups = () => {
     localStorage.setItem("nb_sidebar_groups", JSON.stringify($$(".sidebar-group").filter((g) => g.open).map((g) => g.id)));
   };
-  const positionSidebarFlyout = (g) => {
-    if (!document.body.classList.contains("sidebar-mini")) return;
-    const sub = g.querySelector(".sidebar-sub");
-    const sum = g.querySelector(".sidebar-summary");
-    if (sub && sum) sub.style.top = Math.max(8, sum.getBoundingClientRect().top) + "px";
-  };
   $$(".sidebar-group").forEach((g) => g.addEventListener("toggle", () => {
-    // Mini mode works like an accordion: only one flyout open at a time.
+    // Mini mode works like an accordion: only one submenu open at a time.
     if (document.body.classList.contains("sidebar-mini") && g.open) {
       $$(".sidebar-group").forEach((o) => { if (o !== g && o.open) o.open = false; });
     }
-    if (g.open) positionSidebarFlyout(g);
     persistSidebarGroups();
   }));
   try {
