@@ -1666,28 +1666,34 @@ function renderPageNotes(notes) {
   const box = $("#page-notes-list");
   box.innerHTML = notes.length
     ? notes
-        .map(
-          (n) => `
-          <div class="card group cursor-pointer p-4 transition-shadow hover:shadow-md" data-pnote="${n.id}">
-            <div class="flex items-start justify-between gap-2">
-              <h4 class="min-w-0 flex-1 truncate text-sm font-semibold">${n.pinned ? "📌 " : ""}${escapeHtml(n.title)}</h4>
+        .map((n, i) => {
+          const rot = ((((n.id % 97) * 37) % 9) - 4).toFixed(1); // stable -4°..4° per note
+          const palIdx = i % 3;
+          const palName = ["orange", "blue", "purple"][palIdx];
+          return `
+          <div class="pnote-card group" data-pnote="${n.id}" style="--rot:${rot}deg">
+            <span class="pnote-pin ${palName}${n.pinned ? " red" : ""}"></span>
+            <div class="pnote-inner ${palName}">
+              <h4 class="pnote-title">${n.pinned ? "📌 " : ""}${escapeHtml(n.title)}</h4>
+              <p class="pnote-text">${escapeHtml(stripHtml(n.content, 90)) || "Empty note"}</p>
+              <div class="pnote-foot">
+                <span class="flex min-w-0 items-center gap-1">
+                  ${(n.tags || "")
+                    .split(",")
+                    .filter((t) => t.trim())
+                    .slice(0, 2)
+                    .map((t) => `<span class="pnote-chip">${escapeHtml(t.trim())}</span>`)
+                    .join("")}
+                </span>
+                ${canWrite() ? `<span class="pnote-actions">
+                  <button class="pnote-btn" data-pnact="unlink" title="Remove from page"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72 1.71"/></svg></button>
+                  <button class="pnote-btn danger" data-pnact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
+                </span>` : ""}
+                <span class="pnote-time" title="Updated ${fmtStampFull(n.updated_at)}">${relTime(n.updated_at)}</span>
+              </div>
             </div>
-            <p class="mt-1 line-clamp-3 min-h-[42px] text-xs leading-relaxed text-muted-foreground">${escapeHtml(stripHtml(n.content, 90)) || "Empty note"}</p>
-            <div class="mt-3 flex items-center gap-1.5">
-              ${(n.tags || "")
-                .split(",")
-                .filter((t) => t.trim())
-                .slice(0, 3)
-                .map((t) => `<span class="rounded-md bg-secondary px-1.5 py-0.5 text-[10px] font-medium text-secondary-foreground">${escapeHtml(t.trim())}</span>`)
-                .join("")}
-              <span class="ml-auto shrink-0 text-right text-[10px] leading-tight text-muted-foreground" title="Updated ${fmtStampFull(n.updated_at)}">${relTime(n.updated_at)}</span>
-            </div>
-            ${canWrite() ? `<div class="mt-3 flex items-center gap-1 border-t border-border/70 pt-2 opacity-0 transition-opacity duration-200 group-hover:opacity-100">
-              <button class="tool-btn h-7 min-w-7" data-pnact="unlink" title="Remove from page"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18.84 12.25l1.72-1.71a5 5 0 0 0-7.07-7.07l-1.72 1.71"/><path d="M5.17 11.75l-1.72 1.71a5 5 0 0 0 7.07 7.07l1.72-1.71"/></svg></button>
-              <button class="tool-btn h-7 min-w-7 hover:text-destructive" data-pnact="del" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>
-            </div>` : ""}
-          </div>`
-        )
+          </div>`;
+        })
         .join("")
     : `<p class="col-span-full px-4 py-8 text-center text-sm text-muted-foreground">No notes on this page yet</p>`;
 }
