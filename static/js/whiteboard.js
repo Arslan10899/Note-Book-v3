@@ -542,6 +542,20 @@
 
   // ---------- load ----------
 
+  function applyPayload(res) {
+    const d = res.data || {};
+    state.nodes = Array.isArray(d.nodes) ? d.nodes : [];
+    state.drawings = Array.isArray(d.drawings) ? d.drawings : [];
+    state.edges = Array.isArray(d.edges) ? d.edges : [];
+    const v = d.view || {};
+    state.view = { x: Number(v.x) || 0, y: Number(v.y) || 0, zoom: clamp(Number(v.zoom) || 1, MIN_ZOOM, MAX_ZOOM) };
+    state.selected = null;
+    state.edgeSel = null;
+    dirty = false;
+    render();
+    setStatus(res.updated_at ? "Loaded" : "Empty board", "ok");
+  }
+
   function load() {
     setStatus("Loading…", "busy");
     const snap = JSON.stringify(serialize());
@@ -552,21 +566,78 @@
           setStatus("Loaded, kept local changes", "ok");
           return true;
         }
-        const d = res.data || {};
-        state.nodes = Array.isArray(d.nodes) ? d.nodes : [];
-        state.drawings = Array.isArray(d.drawings) ? d.drawings : [];
-        state.edges = Array.isArray(d.edges) ? d.edges : [];
-        const v = d.view || {};
-        state.view = { x: Number(v.x) || 0, y: Number(v.y) || 0, zoom: clamp(Number(v.zoom) || 1, MIN_ZOOM, MAX_ZOOM) };
-        state.selected = null;
-        state.edgeSel = null;
-        dirty = false;
-        render();
-        setStatus(res.updated_at ? "Loaded" : "Empty board", "ok");
+        applyPayload(res);
         return true;
       })
       .catch(function () {
         setStatus("Load failed", "err");
+        return false;
+      });
+  }
+
+  function openHistory() {
+    setStatus("Loading history…", "busy");
+    return fetch("/api/whiteboard/history", { headers: { "Content-Type": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("history failed")); })
+      .then(function (res) {
+        const list = res.history || [];
+        const pop = $("#wb-history-pop");
+        pop.innerHTML = "";
+        if (!list.length) {
+          const empty = document.createElement("div");
+          empty.className = "wb-hist-empty";
+          empty.textContent = "No past saves yet";
+          pop.appendChild(empty);
+        } else {
+          list.forEach(function (it) {
+            const row = document.createElement("div");
+            row.className = "wb-hist-row";
+            const lab = document.createElement("span");
+            lab.className = "wb-hist-time";
+            lab.textContent = it.created_at;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "wb-hist-load";
+            btn.textContent = "Restore";
+            btn.addEventListener("click", function (e) {
+              e.stopPropagation();
+              const run = function () { restoreBoard(it.rev); };
+              if (window.confirmDialog) window.confirmDialog("Restore the board to " + it.created_at + "? Current board will be overwritten.", run);
+              else if (window.confirm("Restore the board to " + it.created_at + "? Current board will be overwritten.")) run();
+            });
+            row.appendChild(lab);
+            row.appendChild(btn);
+            pop.appendChild(row);
+          });
+        }
+        setStatus(list.length ? list.length + " saved version(s)" : "No history", "ok");
+        togglePop("wb-history-pop");
+        return true;
+      })
+      .catch(function () {
+        setStatus("History unavailable", "err");
+        return false;
+      });
+  }
+
+  function restoreBoard(rev) {
+    setStatus("Restoring…", "busy");
+    return fetch("/api/whiteboard/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rev: rev }),
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("restore failed")); })
+      .then(function () { return fetch("/api/whiteboard", { headers: { "Content-Type": "application/json" } }); })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("reload failed")); })
+      .then(function (res) {
+        applyPayload(res);
+        closePops();
+        window.toast("Board restored", undefined);
+        return true;
+      })
+      .catch(function () {
+        setStatus("Restore failed", "err");
         return false;
       });
   }
@@ -1476,6 +1547,7 @@
     setBrush(state.stroke, false);
     renderFillButton();
     $("#wb-fill-btn").addEventListener("click", function (e) { e.stopPropagation(); toggleFill(); });
+    $("#wb-history").addEventListener("click", function (e) { e.stopPropagation(); openHistory(); });
     $("#wb-color-picker").addEventListener("input", function (e) { applyColor(e.target.value); });
 
     $("#wb-delete").addEventListener("click", function (e) {

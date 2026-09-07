@@ -595,6 +595,13 @@ CREATE TABLE IF NOT EXISTS whiteboards (
     data TEXT NOT NULL DEFAULT '{}',
     updated_at TEXT NOT NULL DEFAULT ''
 );
+CREATE TABLE IF NOT EXISTS whiteboard_history (
+    user_id INTEGER NOT NULL,
+    rev INTEGER NOT NULL,
+    data TEXT NOT NULL,
+    created_at TEXT NOT NULL DEFAULT '',
+    PRIMARY KEY (user_id, rev)
+);
 CREATE INDEX IF NOT EXISTS idx_chat_api_keys_provider ON chat_api_keys(provider);
 CREATE INDEX IF NOT EXISTS idx_tasks_page_id ON tasks(page_id);
 CREATE INDEX IF NOT EXISTS idx_notes_page_id ON notes(page_id);
@@ -6935,7 +6942,7 @@ def whiteboard_get():
     if not u:
         return jsonify({"error": "Not authenticated"}), 401
     conn = get_db()
-    row = conn.execute("SELECT data FROM whiteboards WHERE user_id = ?", (u["id"],)).fetchone()
+    row = conn.execute("SELECT data, updated_at FROM whiteboards WHERE user_id = ?", (u["id"],)).fetchone()
     conn.close()
     if row is None:
         return jsonify({"data": {}, "updated_at": ""})
@@ -6964,6 +6971,15 @@ def whiteboard_save():
         return jsonify({"error": "Not authenticated"}), 401
     stamp = now_stamp()
     conn = get_db()
+    prev = conn.execute("SELECT data FROM whiteboards WHERE user_id = ?", (u["id"],)).fetchone()
+    if prev is not None:
+        maxrev = conn.execute(
+            "SELECT COALESCE(MAX(rev), 0) FROM whiteboard_history WHERE user_id = ?", (u["id"],)
+        ).fetchone()[0]
+        conn.execute(
+            "INSERT INTO whiteboard_history (user_id, rev, data, created_at) VALUES (?, ?, ?, ?)",
+            (u["id"], maxrev + 1, prev["data"], now_stamp()),
+        )
     conn.execute(
         "INSERT INTO whiteboards (user_id, data, updated_at) VALUES (?, ?, ?) "
         "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
@@ -6972,6 +6988,50 @@ def whiteboard_save():
     conn.commit()
     conn.close()
     return jsonify({"ok": True, "updated_at": stamp})
+
+
+@app.get("/api/whiteboard/history")
+def whiteboard_history():
+    u = current_user()
+    if not u:
+        return jsonify({"error": "Not authenticated"}), 401
+    conn = get_db()
+    rows = conn.execute(
+        "SELECT rev, created_at FROM whiteboard_history WHERE user_id = ? ORDER BY rev DESC",
+        (u["id"],),
+    ).fetchall()
+    conn.close()
+    return jsonify({"history": [{"rev": r["rev"], "created_at": r["created_at"]} for r in rows]})
+
+
+@app.post("/api/whiteboard/restore")
+@can_write
+def whiteboard_restore():
+    body = request.get_json(silent=True) or {}
+    try:
+        rev = int(body.get("rev"))
+    except (TypeError, ValueError):
+        return jsonify({"error": "Invalid rev"}), 400
+    u = current_user()
+    if not u:
+        return jsonify({"error": "Not authenticated"}), 401
+    conn = get_db()
+    row = conn.execute(
+        "SELECT data, created_at FROM whiteboard_history WHERE user_id = ? AND rev = ?",
+        (u["id"], rev),
+    ).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Version not found"}), 404
+    stamp = now_stamp()
+    conn.execute(
+        "INSERT INTO whiteboards (user_id, data, updated_at) VALUES (?, ?, ?) "
+        "ON CONFLICT(user_id) DO UPDATE SET data = excluded.data, updated_at = excluded.updated_at",
+        (u["id"], row["data"], stamp),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "updated_at": row["created_at"]})
 
 
 @app.get("/api/chat/review")
