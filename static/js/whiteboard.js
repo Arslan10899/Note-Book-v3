@@ -78,6 +78,10 @@
     return state.nodes.find((n) => n.id === id);
   }
 
+  function bringToFront(n) {
+    n.z = maxZ() + 1;
+  }
+
   function edgeById(id) {
     return state.edges.find((e) => e.id === id);
   }
