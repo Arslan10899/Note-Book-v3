@@ -36,6 +36,7 @@
   let active = false;
   let loadedOnce = false;
   let dirty = false;
+  let inkCanvas, inkCtx, inkLive;
 
   const state = {
     view: { x: 0, y: 0, zoom: 1 },
@@ -190,6 +191,68 @@
     let d = "M" + points[0][0].toFixed(1) + "," + points[0][1].toFixed(1);
     for (let i = 1; i < points.length; i++) d += "L" + points[i][0].toFixed(1) + "," + points[i][1].toFixed(1);
     return d;
+  }
+
+  function initInkCanvas() {
+    inkCanvas = $("#wb-canvas");
+    inkCtx = inkCanvas.getContext("2d");
+    resizeInkCanvas();
+    window.addEventListener("resize", resizeInkCanvas);
+  }
+
+  function resizeInkCanvas() {
+    if (!inkCanvas) return;
+    const r = stageRect();
+    const dpr = window.devicePixelRatio || 1;
+    inkCanvas.width = Math.max(1, Math.round(r.width * dpr));
+    inkCanvas.height = Math.max(1, Math.round(r.height * dpr));
+    inkCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    renderInkCanvas();
+  }
+
+  function renderInkCanvas() {
+    if (!inkCtx) return;
+    const V = state.view;
+    inkCtx.save();
+    inkCtx.setTransform(inkCtx.getTransform().a, 0, 0, inkCtx.getTransform().d, 0, 0);
+    inkCtx.clearRect(0, 0, stageRect().width, stageRect().height);
+    inkCtx.translate(V.x, V.y);
+    inkCtx.scale(V.zoom, V.zoom);
+    const items = state.drawings.slice();
+    if (g && g.ink) items.push(g.ink);
+    items.forEach(function (d) {
+      const pts = d.points || [];
+      const width = d.width || STROKES.pen.width;
+      if (d.dot) {
+        const p = pts[0] || [0, 0];
+        inkCtx.beginPath();
+        inkCtx.arc(p[0], p[1], Math.max(2.5, width / 2), 0, Math.PI * 2);
+        inkCtx.fillStyle = d.color || state.color;
+        inkCtx.globalAlpha = d.opacity != null ? d.opacity : 1;
+        inkCtx.fill();
+        inkCtx.globalAlpha = 1;
+        return;
+      }
+      if (pts.length < 2) return;
+      inkCtx.beginPath();
+      inkCtx.moveTo(pts[0][0], pts[0][1]);
+      for (let i = 1; i < pts.length; i++) inkCtx.lineTo(pts[i][0], pts[i][1]);
+      inkCtx.strokeStyle = d.color || state.color;
+      inkCtx.lineWidth = width;
+      inkCtx.lineCap = "round";
+      inkCtx.lineJoin = "round";
+      inkCtx.globalAlpha = d.opacity != null ? d.opacity : 1;
+      inkCtx.stroke();
+      inkCtx.globalAlpha = 1;
+    });
+    inkCtx.restore();
+  }
+
+  function worldPt(cx, cy) {
+    return {
+      x: (cx - state.view.x) / state.view.zoom,
+      y: (cy - state.view.y) / state.view.zoom,
+    };
   }
 
   function maxZ() {
@@ -351,37 +414,7 @@
       .forEach((n) => box.appendChild(makeNodeEl(n)));
 
     renderEdges();
-
-    const ink = $("#wb-ink");
-    ink.innerHTML = "";
-    state.drawings.forEach(function (d) {
-      const pts = d.points || [];
-      if (pts.length < 1) return;
-      if (d.dot) {
-        const cx = Number(pts[0][0]) || 0;
-        const cy = Number(pts[0][1]) || 0;
-        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
-        c.setAttribute("cx", cx);
-        c.setAttribute("cy", cy);
-        c.setAttribute("r", Math.max(2.5, (d.width || STROKES.pen.width) / 2));
-        c.setAttribute("fill", d.color || state.color);
-        c.setAttribute("opacity", d.opacity != null ? d.opacity : 1);
-        c.setAttribute("vector-effect", "non-scaling-stroke");
-        ink.appendChild(c);
-        return;
-      }
-      if (pts.length < 2) return;
-      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      p.setAttribute("d", strokePathD(pts));
-      p.setAttribute("fill", "none");
-      p.setAttribute("stroke", d.color || state.color);
-      p.setAttribute("stroke-width", d.width || STROKES.pen.width);
-      p.setAttribute("opacity", d.opacity != null ? d.opacity : 1);
-      p.setAttribute("stroke-linecap", "round");
-      p.setAttribute("stroke-linejoin", "round");
-      p.setAttribute("vector-effect", "non-scaling-stroke");
-      ink.appendChild(p);
-    });
+    renderInkCanvas();
 
     const empty = $("#wb-empty");
     if (empty) empty.classList.toggle("hidden", state.nodes.length + state.drawings.length > 0);
@@ -1001,22 +1034,10 @@
         opacity: br.opacity,
         points: [[w.x, w.y]],
       };
-      state.drawings.push(d);
-      render();
-      const ink = $("#wb-ink");
-      const stroke = document.createElementNS("http://www.w3.org/2000/svg", "path");
-      stroke.setAttribute("d", strokePathD(d.points));
-      stroke.setAttribute("fill", "none");
-      stroke.setAttribute("stroke", d.color);
-      stroke.setAttribute("stroke-width", d.width);
-      stroke.setAttribute("opacity", d.opacity);
-      stroke.setAttribute("stroke-linecap", "round");
-      stroke.setAttribute("stroke-linejoin", "round");
-      stroke.setAttribute("vector-effect", "non-scaling-stroke");
-      ink.appendChild(stroke);
       g.kind = "pen";
       g.ink = d;
-      g.inkEl = stroke;
+      g.from = { x: w.x, y: w.y };
+      renderInkCanvas();
       beginGesture();
       return;
     }
@@ -1197,7 +1218,7 @@
 
     if (g.kind === "pen" && g.ink) {
       g.ink.points.push([w.x, w.y]);
-      if (g.inkEl) g.inkEl.setAttribute("d", strokePathD(g.ink.points));
+      renderInkCanvas();
       return;
     }
 
@@ -1270,6 +1291,7 @@
         g.ink.dot = true;
         if (g.ink.points.length === 1) g.ink.points.push([g.ink.points[0][0], g.ink.points[0][1]]);
       }
+      state.drawings.push(g.ink);
       endGesture();
       render();
       markDirty();
@@ -1389,6 +1411,7 @@
     const zl = $("#wb-zoom-label");
     if (zl) zl.textContent = Math.round(V.zoom * 100) + "%";
     syncLayout();
+    renderInkCanvas();
   }
 
   function fitToScreen() {
@@ -1521,6 +1544,7 @@
   // ---------- init ----------
 
   function bind() {
+    initInkCanvas();
     const stage = $("#wb-stage");
     stage.addEventListener("pointerdown", onDown);
     stage.addEventListener("wheel", onWheel, { passive: false });

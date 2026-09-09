@@ -1,4 +1,4 @@
-﻿/* Hide utility available before Tailwind CDN generates its stylesheet (prevents view flash on refresh).
+﻿<!DOCTYPE html><html><head><meta charset="utf-8"><title>M</title><style>/* Hide utility available before Tailwind CDN generates its stylesheet (prevents view flash on refresh).
    Zero specificity (:where) so responsive display utilities like sm:block always win over it. */
 :where(.hidden) {
   display: none;
@@ -3378,14 +3378,6 @@ html, body { overflow-x: clip; }
   background-size: 24px 24px;
   cursor: default;
 }
-.wb-canvas {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-  z-index: 1;
-  pointer-events: none;
-}
 .dark .wb-stage {
   background-color: #181a20;
   background-image: radial-gradient(circle, rgba(255, 255, 255, 0.09) 1px, transparent 1px);
@@ -3817,3 +3809,1709 @@ html, body { overflow-x: clip; }
 
 .wb-status[data-kind="warn"] { color: hsl(45 90% 45%); }
 .dark .wb-status[data-kind="warn"] { color: hsl(45 90% 55%); }
+</style></head><body><!-- Interactive Whiteboard -->
+      <section id="view-whiteboard" class="view">
+        <div id="wb-root" class="wb-root">
+          <div id="wb-toolbar" class="wb-toolbar">
+            <div class="wb-tool-group">
+              <button type="button" class="wb-tool active" data-wb-tool="select" title="Select (V)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m3 3 7.07 16.97 2.51-7.39 7.39-2.51L3 3z"/></svg></button>
+              <button type="button" class="wb-tool" data-wb-tool="pan" title="Pan (H / middle-mouse drag)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M18 11V6a2 2 0 0 0-4 0v5"/><path d="M14 10V4a2 2 0 0 0-4 0v6"/><path d="M10 10.5V6a2 2 0 0 0-4 0v8"/><path d="M18 8a2 2 0 1 1 4 0v6a8 8 0 0 1-8 8h-2c-2.8 0-4.5-.86-5.99-2.34l-3.6-3.6a2 2 0 0 1 2.83-2.82L7 15"/></svg></button>
+            </div>
+            <div class="wb-tool-group">
+              <span class="wb-pop-wrap">
+                <button type="button" class="wb-tool" data-wb-tool="pen" id="wb-pen-tool" title="Draw strokes (P)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg></button>
+                <button type="button" id="wb-stroke-btn" class="wb-tool wb-pop-cur" title="Pen style"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="m6 9 6 6 6-6"/></svg></button>
+                <div id="wb-stroke-pop" class="wb-popout hidden wb-col" role="menu">
+                  <button type="button" class="wb-opt" data-brush="pen" title="Pen — crisp 2.5px"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="m18 13-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="M2 2l7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg><span>Pen</span></button>
+                  <button type="button" class="wb-opt" data-brush="marker" title="Marker — bold 7px"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/></svg><span>Marker</span></button>
+                  <button type="button" class="wb-opt" data-brush="pencil" title="Pencil — light 1.6px"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/><path d="m15 5 4 4"/></svg><span>Pencil</span></button>
+                  <button type="button" class="wb-opt" data-brush="highlighter" title="Highlighter — translucent 18px"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="m9 11-6 6v3h9l3-3"/><path d="m22 12-4.6 4.6a2 2 0 0 1-2.8 0l-5.2-5.2a2 2 0 0 1 0-2.8L14 4"/><path d="M14 4l6 6"/></svg><span>Highlighter</span></button>
+                </div>
+              </span>
+              <span class="wb-pop-wrap">
+                <button type="button" id="wb-color-btn" class="wb-tool wb-pop-cur" title="Color"><span id="wb-color-dot" class="wb-color-dot"></span></button>
+                <div id="wb-color-pop" class="wb-popout hidden wb-col">
+                  <div id="wb-swatches" class="wb-swatches"></div>
+                  <label class="wb-color-input"><input type="color" id="wb-color-picker" value="#111827" title="Custom color" />Custom</label>
+                </div>
+              </span>
+              <button type="button" id="wb-fill-btn" class="wb-tool" title="Fill: solid (F)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/></svg></button>
+              <span class="wb-pop-wrap">
+                <button type="button" id="wb-history" class="wb-tool wb-pop-cur" title="Saved versions (history)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/><path d="M12 7v5l4 2"/></svg></button>
+                <div id="wb-history-pop" class="wb-popout hidden wb-col"></div>
+              </span>
+              <span class="wb-pop-wrap">
+                <button type="button" id="wb-shapes-btn" class="wb-tool wb-pop-cur" title="Shapes"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 22 12 12 22 2 12z"/><circle cx="18" cy="4" r="1.5"/><circle cx="5" cy="19" r="1.5"/></svg></button>
+                <div id="wb-shapes-pop" class="wb-popout hidden wb-grid">
+                  <button type="button" class="wb-opt" data-wb-tool="rect" title="Rectangle"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="16" height="12" x="4" y="6" rx="1"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="ellipse" title="Ellipse"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><ellipse cx="12" cy="12" rx="8" ry="5.5"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="triangle" title="Triangle"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 21h18L12 4z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="diamond" title="Diamond"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 2 22 12 12 22 2 12z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="star" title="Star"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="hexagon" title="Hexagon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="21 16 21 8 12 2 3 8 3 16 12 22 21 16"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="arrow" title="Block arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="10 2 20 12 10 22 10 16 2 16 2 8 10 8"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="line" title="Straight line"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="20" y1="4" x2="4" y2="20"/></svg></button>
+                </div>
+              </span>
+            </div>
+            <div class="wb-tool-group">
+              <button type="button" class="wb-tool" data-wb-tool="sticky" title="Sticky note (S)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 3H5a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h8l6-6V5a2 2 0 0 0-2-2z"/><path d="M14 21v-4h4"/></svg></button>
+              <button type="button" class="wb-tool" data-wb-tool="text" title="Text (T)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 6.1H3"/><path d="M21 12.1H9"/><path d="M15.1 18.1H9"/></svg></button>
+              <button type="button" class="wb-tool" data-wb-tool="image" title="Add / import image"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.086-3.086a2 2 0 0 0-2.828 0L6 21"/></svg></button>
+              <button type="button" class="wb-tool" data-wb-tool="table" title="Table"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="18" height="18" x="3" y="3" rx="1"/><path d="M3 9h18"/><path d="M3 15h18"/><path d="M12 3v18"/></svg></button>
+              <button type="button" class="wb-tool" data-wb-tool="connector" title="Connector — link shapes (L)"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="6" cy="6" r="2" fill="currentColor"/><circle cx="6" cy="18" r="2" fill="currentColor"/><path d="M8 8v8"/><circle cx="18" cy="12" r="2" fill="currentColor"/><path d="M8.5 8.5 17 11"/><path d="M8.5 15.5 17 13"/></svg></button>
+            </div>
+            <div class="wb-tool-group">
+              <button type="button" id="wb-zoom-out" class="wb-tool" title="Zoom out">−</button>
+              <span id="wb-zoom-label" class="wb-zoom-label">100%</span>
+              <button type="button" id="wb-zoom-in" class="wb-tool" title="Zoom in">+</button>
+              <button type="button" id="wb-fit" class="wb-tool" title="Fit to screen">⤢</button>
+            </div>
+            <div class="wb-tool-group">
+              <span id="wb-status" class="wb-status">Saved</span>
+              <button type="button" id="wb-save" class="wb-tool wb-primary wb-btn" title="Save board (Ctrl+S)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15.2 3a2 2 0 0 1 1.4.6l3.8 3.8a2 2 0 0 1 .6 1.4V19a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2z"/><path d="M17 21v-7a1 1 0 0 0-1-1H8a1 1 0 0 0-1 1v7"/><path d="M7 3v4a1 1 0 0 0 1 1h7"/></svg><span>Save</span></button>
+              <button type="button" id="wb-delete" class="wb-tool wb-clear wb-btn" title="Remove selected shape (Del)"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="m15 9-6 6"/><path d="m9 9 6 6"/></svg><span>Remove</span></button>
+              <button type="button" id="wb-clear" class="wb-tool wb-clear wb-btn" title="Clear board"><svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/></svg><span>Clear</span></button>
+            </div>
+          </div>
+          <input type="file" id="wb-image-input" accept="image/*" class="hidden">
+          <div id="wb-stage" class="wb-stage">
+            <div id="wb-world" class="wb-world">
+              <div id="wb-nodes" class="wb-nodes"></div>
+              <svg id="wb-ink" class="wb-ink" width="0" height="0"></svg>
+              <svg id="wb-edges" class="wb-edges" width="0" height="0"></svg>
+            </div>
+            <div id="wb-selbox" class="wb-selbox hidden"><div id="wb-handle" class="wb-handle" title="Drag to resize"></div></div>
+            <div id="wb-ep1" class="wb-ep hidden"></div>
+            <div id="wb-ep2" class="wb-ep hidden"></div>
+            <div id="wb-empty" class="wb-empty hidden">Pick a tool above — pen, shapes, sticky notes, images, tables &amp; connectors</div>
+            <span class="wb-hint">Wheel: zoom · Hand tool / middle-mouse: pan · Select: click &amp; drag items · Connector: drag shape-to-shape</span>
+            </div>
+        </div>
+      </section>
+
+      
+<script>/* Interactive whiteboard (v2): manual-save only. Pen/marker/pencil/highlighter,
+   color picker, many shapes, sticky/text/images/tables, Excalidraw-style
+   connector edges with draggable + magnetizable endpoints. */
+
+(function () {
+  "use strict";
+
+  const MAX_ZOOM = 3;
+  const MIN_ZOOM = 0.2;
+  const STICKY_FILL = "#ffe599";
+  const STICKY_SIZE = { w: 170, h: 150 };
+  const TEXT_COLOR = null; // null = theme foreground
+  const IMAGE_MAX_W = 520;
+  const IMAGE_MAX_H = 340;
+
+  const STROKES = {
+    pen:         { label: "Pen",         width: 2.6, opacity: 1.0 },
+    marker:      { label: "Marker",      width: 7,   opacity: 0.6 },
+    pencil:      { label: "Pencil",      width: 1.6, opacity: 0.85 },
+    highlighter: { label: "Highlighter", width: 18,  opacity: 0.35 },
+  };
+
+  const PALETTE = [
+    "#111827", "#6b7280", "#dc2626", "#ea580c",
+    "#d97706", "#eab308", "#65a30d", "#16a34a",
+    "#0d9488", "#0891b2", "#2563eb", "#4f46e5",
+    "#7c3aed", "#c026d3", "#db2777", "#64748b",
+  ];
+
+  const SHAPES = ["rect", "ellipse", "triangle", "diamond", "star", "hexagon", "arrow", "line"];
+
+  const $ = (s, r) => (r || document).querySelector(s);
+  const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
+
+  let booted = false;
+  let active = false;
+  let loadedOnce = false;
+  let dirty = false;
+
+  const state = {
+    view: { x: 0, y: 0, zoom: 1 },
+    nodes: [],
+    drawings: [],
+    edges: [],
+    tool: "select",
+    stroke: "pen",
+    color: "#111827",
+    fill: "solid",        // "solid" | "transparent"
+    selected: null,   // node id
+    edgeSel: null,    // edge id
+  };
+
+  const g = {
+    kind: null,       // pan | pen | shape | node | resize | connector | edgeEnd
+    start: { x: 0, y: 0 },
+    view: { x: 0, y: 0 },
+    node: null,
+    from: { x: 0, y: 0 },
+    nodeFrom: { x: 0, y: 0 },
+    sizeFrom: null,
+    preview: null,
+    shapeType: null,
+    ink: null,
+    inkEl: null,
+    edge: null,
+    which: null,
+    startP: { x: 0, y: 0 },
+  };
+
+  // ---------- helpers ----------
+
+  function nextId() {
+    return "n" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6);
+  }
+
+  function nodeById(id) {
+    return state.nodes.find((n) => n.id === id);
+  }
+
+  function edgeById(id) {
+    return state.edges.find((e) => e.id === id);
+  }
+
+  function center(n) {
+    return { x: n.x + (n.w || 80) / 2, y: n.y + (n.h || 40) / 2 };
+  }
+
+  function clamp(v, lo, hi) { return Math.min(hi, Math.max(lo, v)); }
+
+  function stageRect() {
+    return $("#wb-stage").getBoundingClientRect();
+  }
+
+  function toWorld(cx, cy) {
+    const r = stageRect();
+    return {
+      x: (cx - r.left - state.view.x) / state.view.zoom,
+      y: (cy - r.top - state.view.y) / state.view.zoom,
+    };
+  }
+
+  const SHAPE_PATHS = {
+    rect:     "M0 0 H100 V100 H0 Z",
+    triangle: "M50 0 L100 100 L0 100 Z",
+    diamond:  "M50 0 L100 50 L50 100 L0 50 Z",
+    star:     "M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z",
+    hexagon:  "M25 0 L75 0 L100 50 L75 100 L25 100 L0 50 Z",
+    arrow:    "M0 15 L60 15 L60 0 L100 50 L60 100 L60 85 L0 85 Z",
+  };
+
+  function shapeStrokeEl(type, color) {
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("class", "wb-shape-stroke");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.setAttribute("width", "100%");
+    svg.setAttribute("height", "100%");
+    svg.setAttribute("overflow", "visible");
+    svg.setAttribute("preserveAspectRatio", "none");
+    const shape = document.createElementNS(ns, type === "ellipse" ? "ellipse" : "path");
+    if (type === "ellipse") {
+      shape.setAttribute("cx", 50);
+      shape.setAttribute("cy", 50);
+      shape.setAttribute("rx", 48);
+      shape.setAttribute("ry", 48);
+    } else {
+      shape.setAttribute("d", SHAPE_PATHS[type] || SHAPE_PATHS.rect);
+    }
+    shape.setAttribute("fill", "none");
+    shape.setAttribute("stroke", color);
+    shape.setAttribute("stroke-width", 3.5);
+    shape.setAttribute("stroke-linejoin", "round");
+    shape.setAttribute("stroke-linecap", "round");
+    svg.appendChild(shape);
+    return svg;
+  }
+
+  function toggleFill() {
+    state.fill = state.fill === "transparent" ? "solid" : "transparent";
+    renderFillButton();
+    setStatus(state.fill === "transparent" ? "Fill: transparent" : "Fill: solid", state.fill === "transparent" ? "warn" : "ok");
+  }
+
+  function renderFillButton() {
+    const b = $("#wb-fill-btn");
+    if (!b) return;
+    const ns = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(ns, "svg");
+    svg.setAttribute("width", "14");
+    svg.setAttribute("height", "14");
+    svg.setAttribute("viewBox", "0 0 24 24");
+    svg.setAttribute("fill", "none");
+    svg.setAttribute("stroke", "currentColor");
+    svg.setAttribute("stroke-width", "2");
+    svg.setAttribute("stroke-linecap", "round");
+    svg.setAttribute("stroke-linejoin", "round");
+    const square = document.createElementNS(ns, "rect");
+    square.setAttribute("x", "3");
+    square.setAttribute("y", "3");
+    square.setAttribute("width", "18");
+    square.setAttribute("height", "18");
+    square.setAttribute("rx", "2");
+    if (state.fill === "transparent") {
+      square.setAttribute("fill", "none");
+    } else {
+      square.setAttribute("fill", "currentColor");
+      square.setAttribute("fill-opacity", "0.22");
+    }
+    svg.appendChild(square);
+    b.innerHTML = "";
+    b.appendChild(svg);
+    b.title = state.fill === "transparent" ? "Fill: transparent (F)" : "Fill: solid (F)";
+  }
+
+  function toScreen(p) {
+    const V = state.view;
+    return { x: p.x * V.zoom + V.x, y: p.y * V.zoom + V.y };
+  }
+
+  function boxIntersect(cx, cy, hw, hh, dx, dy) {
+    if (dx === 0 && dy === 0) return { x: cx, y: cy };
+    const sx = dx !== 0 ? hw / Math.abs(dx) : Infinity;
+    const sy = dy !== 0 ? hh / Math.abs(dy) : Infinity;
+    const t = Math.min(sx, sy);
+    return { x: cx + dx * t, y: cy + dy * t };
+  }
+
+  function strokePathD(points) {
+    if (!points || !points.length) return "";
+    let d = "M" + points[0][0].toFixed(1) + "," + points[0][1].toFixed(1);
+    for (let i = 1; i < points.length; i++) d += "L" + points[i][0].toFixed(1) + "," + points[i][1].toFixed(1);
+    return d;
+  }
+
+  function maxZ() {
+    return state.nodes.reduce((m, n) => Math.max(m, n.z || 0), 0);
+  }
+
+  // ---------- rendering ----------
+
+  function currentBrush() {
+    return STROKES[state.stroke] || STROKES.pen;
+  }
+
+  function makeTableNode(n) {
+    const tbl = document.createElement("table");
+    tbl.className = "wb-table";
+    (n.rows || []).forEach(function (row) {
+      const tr = document.createElement("tr");
+      row.forEach(function (cellTxt) {
+        const td = document.createElement("td");
+        const c = document.createElement("div");
+        c.className = "wb-cell";
+        c.contentEditable = "true";
+        c.setAttribute("spellcheck", "false");
+        c.textContent = cellTxt || "";
+        td.appendChild(c);
+        tr.appendChild(td);
+      });
+      tbl.appendChild(tr);
+    });
+    return tbl;
+  }
+
+  function makeNodeEl(n) {
+    const el = document.createElement("div");
+    el.className = "wb-node wb-" + (n.type || "rect") + (n.id === state.selected ? " selected" : "");
+    el.dataset.id = n.id;
+    el.style.left = n.x + "px";
+    el.style.top = n.y + "px";
+    el.style.zIndex = n.z || 0;
+    el.style.width = Math.max(24, n.w || 80) + "px";
+    el.style.height = Math.max(24, n.h || 40) + "px";
+
+    const type = n.type || "rect";
+
+    if (type === "sticky") {
+      el.style.background = n.color || STICKY_FILL;
+      el.style.width = Math.max(60, n.w) + "px";
+      el.style.height = Math.max(60, n.h) + "px";
+      const inner = document.createElement("div");
+      inner.className = "wb-node-text";
+      inner.contentEditable = "true";
+      inner.setAttribute("spellcheck", "false");
+      inner.textContent = n.text || "";
+      el.appendChild(inner);
+    } else if (type === "text") {
+      el.style.width = n.w && n.w > 0 ? n.w + "px" : "auto";
+      el.style.height = "auto";
+      const inner = document.createElement("div");
+      inner.className = "wb-node-text";
+      inner.contentEditable = "true";
+      inner.setAttribute("spellcheck", "false");
+      inner.textContent = n.text || "";
+      if (n.color) inner.style.color = n.color;
+      el.appendChild(inner);
+    } else if (type === "image") {
+      const img = document.createElement("img");
+      img.className = "wb-node-img";
+      img.src = n.src || "";
+      img.alt = "";
+      img.draggable = false;
+      el.appendChild(img);
+    } else if (type === "table") {
+      el.appendChild(makeTableNode(n));
+    } else if (type === "line") {
+      const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+      svg.setAttribute("width", "100%");
+      svg.setAttribute("height", "100%");
+      svg.setAttribute("overflow", "visible");
+      const ln = document.createElementNS("http://www.w3.org/2000/svg", "line");
+      ln.setAttribute("x1", 0);
+      ln.setAttribute("y1", 0);
+      ln.setAttribute("x2", n.w || 80);
+      ln.setAttribute("y2", n.h || 40);
+      ln.setAttribute("stroke", n.color || state.color);
+      ln.setAttribute("stroke-width", 2.5);
+      ln.setAttribute("stroke-linecap", "round");
+      svg.appendChild(ln);
+      el.appendChild(svg);
+    } else if (SHAPES.indexOf(type) !== -1) {
+      if (n.fill === "transparent") {
+        el.appendChild(shapeStrokeEl(type, n.color || state.color));
+      } else {
+        el.style.background = n.color || state.color;
+      }
+      if (type === "ellipse") el.style.borderRadius = "50%";
+    } else {
+      el.style.background = n.color || state.color;
+    }
+    return el;
+  }
+
+  function renderEdges() {
+    const svg = $("#wb-edges");
+    if (!svg) return;
+
+    const ns = "http://www.w3.org/2000/svg";
+    const defs = document.createElementNS(ns, "defs");
+    const marker = document.createElementNS(ns, "marker");
+    marker.setAttribute("id", "wb-arrow");
+    marker.setAttribute("viewBox", "0 0 10 10");
+    marker.setAttribute("refX", "8");
+    marker.setAttribute("refY", "5");
+    marker.setAttribute("markerWidth", "7");
+    marker.setAttribute("markerHeight", "7");
+    marker.setAttribute("orient", "auto-start-reverse");
+    const arrowPath = document.createElementNS(ns, "path");
+    arrowPath.setAttribute("d", "M0,0 L10,5 L0,10 z");
+    arrowPath.setAttribute("fill", "context-stroke");
+    marker.appendChild(arrowPath);
+    defs.appendChild(marker);
+
+    svg.innerHTML = "";
+    svg.appendChild(defs);
+
+    state.edges.forEach(function (e) {
+      const pts = edgePts(e);
+      const d = "M" + pts.f.x.toFixed(1) + "," + pts.f.y.toFixed(1) + " L" + pts.t.x.toFixed(1) + "," + pts.t.y.toFixed(1);
+
+      const hit = document.createElementNS(ns, "path");
+      hit.setAttribute("d", d);
+      hit.setAttribute("fill", "none");
+      hit.setAttribute("stroke", "transparent");
+      hit.setAttribute("stroke-width", "14");
+      hit.setAttribute("stroke-linecap", "round");
+      hit.setAttribute("class", "wb-edge-hit");
+      hit.dataset.eid = e.id;
+
+      const vis = document.createElementNS(ns, "path");
+      vis.setAttribute("d", d);
+      vis.setAttribute("fill", "none");
+      vis.setAttribute("stroke", e.color || state.color);
+      vis.setAttribute("stroke-width", state.edgeSel === e.id ? 3.2 : 2.2);
+      vis.setAttribute("stroke-linecap", "round");
+      vis.setAttribute("vector-effect", "non-scaling-stroke");
+      vis.setAttribute("marker-end", "url(#wb-arrow)");
+      if (state.edgeSel === e.id) vis.setAttribute("class", "wb-edge-sel");
+
+      svg.appendChild(hit);
+      svg.appendChild(vis);
+    });
+  }
+
+  function render() {
+    const box = $("#wb-nodes");
+    box.innerHTML = "";
+    state.nodes
+      .slice()
+      .sort((a, b) => (a.z || 0) - (b.z || 0))
+      .forEach((n) => box.appendChild(makeNodeEl(n)));
+
+    renderEdges();
+
+    const ink = $("#wb-ink");
+    ink.innerHTML = "";
+    state.drawings.forEach(function (d) {
+      const pts = d.points || [];
+      if (pts.length < 1) return;
+      if (d.dot) {
+        const cx = Number(pts[0][0]) || 0;
+        const cy = Number(pts[0][1]) || 0;
+        const c = document.createElementNS("http://www.w3.org/2000/svg", "circle");
+        c.setAttribute("cx", cx);
+        c.setAttribute("cy", cy);
+        c.setAttribute("r", Math.max(2.5, (d.width || STROKES.pen.width) / 2));
+        c.setAttribute("fill", d.color || state.color);
+        c.setAttribute("opacity", d.opacity != null ? d.opacity : 1);
+        c.setAttribute("vector-effect", "non-scaling-stroke");
+        ink.appendChild(c);
+        return;
+      }
+      if (pts.length < 2) return;
+      const p = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      p.setAttribute("d", strokePathD(pts));
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", d.color || state.color);
+      p.setAttribute("stroke-width", d.width || STROKES.pen.width);
+      p.setAttribute("opacity", d.opacity != null ? d.opacity : 1);
+      p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("stroke-linejoin", "round");
+      p.setAttribute("vector-effect", "non-scaling-stroke");
+      ink.appendChild(p);
+    });
+
+    const empty = $("#wb-empty");
+    if (empty) empty.classList.toggle("hidden", state.nodes.length + state.drawings.length > 0);
+
+    applyView();
+    syncLayout();
+  }
+
+  // ---------- selection overlay (screen-space, zoom-stable) ----------
+
+  function syncLayout() {
+    const sb = $("#wb-selbox");
+    const hd = $("#wb-handle");
+    const ep1 = $("#wb-ep1");
+    const ep2 = $("#wb-ep2");
+    if (!sb) return;
+
+    if (state.selected) {
+      const n = nodeById(state.selected);
+      if (n) {
+        const a = toScreen({ x: n.x, y: n.y });
+        const bw = (n.w || 80) * state.view.zoom;
+        const bh = (n.h || 40) * state.view.zoom;
+        sb.classList.remove("hidden");
+        sb.style.left = a.x + "px";
+        sb.style.top = a.y + "px";
+        sb.style.width = Math.max(20, bw) + "px";
+        sb.style.height = Math.max(20, bh) + "px";
+        hd.classList.remove("hidden");
+        hd.style.left = (a.x + Math.max(20, bw)) + "px";
+        hd.style.top = (a.y + Math.max(20, bh)) + "px";
+      } else {
+        state.selected = null;
+        syncLayout();
+        return;
+      }
+      ep1.classList.add("hidden");
+      ep2.classList.add("hidden");
+      return;
+    }
+
+    if (state.edgeSel) {
+      const e = edgeById(state.edgeSel);
+      if (e) {
+        const pts = edgePts(e);
+        sb.classList.add("hidden");
+        hd.classList.add("hidden");
+        positionEp(ep1, pts.f);
+        positionEp(ep2, pts.t);
+        ep1.classList.remove("hidden");
+        ep2.classList.remove("hidden");
+        return;
+      } else {
+        state.edgeSel = null;
+      }
+    }
+    sb.classList.add("hidden");
+    hd.classList.add("hidden");
+    ep1.classList.add("hidden");
+    ep2.classList.add("hidden");
+  }
+
+  function positionEp(el, p) {
+    const s = toScreen(p);
+    el.style.left = s.x + "px";
+    el.style.top = s.y + "px";
+  }
+
+  // ---------- edges geometry ----------
+
+  function resolveEnd(ep) {
+    if (ep && ep.node) {
+      const n = nodeById(ep.node);
+      if (n) {
+        if (ep.x != null && ep.y != null) return { x: ep.x, y: ep.y };
+        return center(n);
+      }
+      return { x: ep.x || 0, y: ep.y || 0 };
+    }
+    return { x: (ep && ep.x) || 0, y: (ep && ep.y) || 0 };
+  }
+
+  function edgePts(e) {
+    const f = resolveEnd(e.from);
+    const t = resolveEnd(e.to);
+    if (e.from && e.from.node) {
+      const n = nodeById(e.from.node);
+      if (n && e.from.x == null && e.from.y == null) {
+        const c = center(n);
+        const p = boxIntersect(c.x, c.y, (n.w || 80) / 2, (n.h || 40) / 2, t.x - c.x, t.y - c.y);
+        f.x = p.x; f.y = p.y;
+      }
+    }
+    if (e.to && e.to.node) {
+      const n = nodeById(e.to.node);
+      if (n && e.to.x == null && e.to.y == null) {
+        const c = center(n);
+        const p = boxIntersect(c.x, c.y, (n.w || 80) / 2, (n.h || 40) / 2, f.x - c.x, f.y - c.y);
+        t.x = p.x; t.y = p.y;
+      }
+    }
+    return { f: f, t: t };
+  }
+
+  function nodeAt(p) {
+    // topmost node under a world point
+    for (let i = state.nodes.length - 1; i >= 0; i--) {
+      const n = state.nodes[i];
+      if (p.x >= n.x && p.x <= n.x + (n.w || 80) && p.y >= n.y && p.y <= n.y + (n.h || 40)) return n;
+    }
+    return null;
+  }
+
+  // ---------- status / save (manual only) ----------
+
+  function setStatus(txt, kind) {
+    const s = $("#wb-status");
+    if (!s) return;
+    s.textContent = txt;
+    s.dataset.kind = kind || "idle";
+  }
+
+  function toast(msg, kind) {
+    if (window.toast) window.toast(msg, kind);
+  }
+
+  function markDirty() {
+    dirty = true;
+    setStatus("Unsaved", "warn");
+  }
+
+  function serialize() {
+    return {
+      view: state.view,
+      nodes: state.nodes.map(function (n) {
+        const o = { id: n.id, type: n.type, x: n.x, y: n.y, w: n.w, h: n.h, z: n.z, color: n.color, text: n.text };
+        if (n.fill) o.fill = n.fill;
+        if (n.type === "image") o.src = n.src;
+        if (n.type === "image" && n.w0 && n.h0) { o.w0 = n.w0; o.h0 = n.h0; }
+        if (n.type === "table") o.rows = n.rows;
+        return o;
+      }),
+      edges: state.edges.map(function (e) {
+        return { id: e.id, from: e.from, to: e.to, color: e.color, width: e.width };
+      }),
+      drawings: state.drawings.map(function (d) {
+        const o = { id: d.id, color: d.color, width: d.width, opacity: d.opacity, points: d.points };
+        if (d.dot) o.dot = true;
+        return o;
+      }),
+    };
+  }
+
+  function doSave() {
+    setStatus("Saving…", "busy");
+    return fetch("/api/whiteboard", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ data: serialize() }),
+    })
+      .then(function (r) {
+        if (!r.ok) throw new Error("save failed");
+        return r.json();
+      })
+      .then(function () {
+        dirty = false;
+        const t = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit", second: "2-digit" });
+        setStatus("Saved " + t, "ok");
+        return true;
+      })
+      .catch(function () {
+        setStatus("Save failed", "err");
+        return false;
+      });
+  }
+
+  // ---------- load ----------
+
+  function applyPayload(res) {
+    const d = res.data || {};
+    state.nodes = Array.isArray(d.nodes) ? d.nodes : [];
+    state.drawings = Array.isArray(d.drawings) ? d.drawings : [];
+    state.edges = Array.isArray(d.edges) ? d.edges : [];
+    const v = d.view || {};
+    state.view = { x: Number(v.x) || 0, y: Number(v.y) || 0, zoom: clamp(Number(v.zoom) || 1, MIN_ZOOM, MAX_ZOOM) };
+    state.selected = null;
+    state.edgeSel = null;
+    dirty = false;
+    render();
+    setStatus(res.updated_at ? "Loaded" : "Empty board", "ok");
+  }
+
+  function load() {
+    setStatus("Loading…", "busy");
+    const snap = JSON.stringify(serialize());
+    return fetch("/api/whiteboard", { method: "GET", headers: { "Content-Type": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("load failed")); })
+      .then(function (res) {
+        if (dirty || JSON.stringify(serialize()) !== snap) {
+          setStatus("Loaded, kept local changes", "ok");
+          return true;
+        }
+        applyPayload(res);
+        return true;
+      })
+      .catch(function () {
+        setStatus("Load failed", "err");
+        return false;
+      });
+  }
+
+  function openHistory() {
+    setStatus("Loading history…", "busy");
+    return fetch("/api/whiteboard/history", { headers: { "Content-Type": "application/json" } })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("history failed")); })
+      .then(function (res) {
+        const list = res.history || [];
+        const pop = $("#wb-history-pop");
+        pop.innerHTML = "";
+        if (!list.length) {
+          const empty = document.createElement("div");
+          empty.className = "wb-hist-empty";
+          empty.textContent = "No past saves yet";
+          pop.appendChild(empty);
+        } else {
+          list.forEach(function (it) {
+            const row = document.createElement("div");
+            row.className = "wb-hist-row";
+            const lab = document.createElement("span");
+            lab.className = "wb-hist-time";
+            lab.textContent = it.created_at;
+            const btn = document.createElement("button");
+            btn.type = "button";
+            btn.className = "wb-hist-load";
+            btn.textContent = "Restore";
+            btn.addEventListener("click", function (e) {
+              e.stopPropagation();
+              const run = function () { restoreBoard(it.rev); };
+              if (window.confirmDialog) window.confirmDialog("Restore the board to " + it.created_at + "? Current board will be overwritten.", run);
+              else if (window.confirm("Restore the board to " + it.created_at + "? Current board will be overwritten.")) run();
+            });
+            row.appendChild(lab);
+            row.appendChild(btn);
+            pop.appendChild(row);
+          });
+        }
+        setStatus(list.length ? list.length + " saved version(s)" : "No history", "ok");
+        togglePop("wb-history-pop");
+        return true;
+      })
+      .catch(function () {
+        setStatus("History unavailable", "err");
+        return false;
+      });
+  }
+
+  function restoreBoard(rev) {
+    setStatus("Restoring…", "busy");
+    return fetch("/api/whiteboard/restore", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ rev: rev }),
+    })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("restore failed")); })
+      .then(function () { return fetch("/api/whiteboard", { headers: { "Content-Type": "application/json" } }); })
+      .then(function (r) { return r.ok ? r.json() : Promise.reject(new Error("reload failed")); })
+      .then(function (res) {
+        applyPayload(res);
+        closePops();
+        window.toast("Board restored", undefined);
+        return true;
+      })
+      .catch(function () {
+        setStatus("Restore failed", "err");
+        return false;
+      });
+  }
+
+  // ---------- toolbar / brushes / color / shapes ----------
+
+  function closePops() {
+    $$(".wb-popout").forEach(function (p) { p.classList.add("hidden"); });
+  }
+
+  function togglePop(id) {
+    const p = $("#" + id);
+    if (p.classList.contains("hidden")) {
+      closePops();
+      p.classList.remove("hidden");
+    } else {
+      p.classList.add("hidden");
+    }
+  }
+
+  function renderSwatches() {
+    const wrap = $("#wb-swatches");
+    wrap.innerHTML = "";
+    PALETTE.forEach(function (c) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "wb-swatch" + (c === state.color ? " active" : "");
+      b.style.background = c;
+      b.dataset.color = c;
+      b.addEventListener("click", function () { applyColor(c); });
+      wrap.appendChild(b);
+    });
+  }
+
+  function applyColor(c) {
+    state.color = c;
+    $("#wb-color-dot").style.background = c;
+    $("#wb-color-picker").value = c;
+    renderSwatches();
+    if (state.selected) {
+      const n = nodeById(state.selected);
+      if (n && SHAPES.indexOf(n.type) !== -1) {
+        n.color = c;
+        render();
+        markDirty();
+        return;
+      }
+    }
+    if (state.edgeSel) {
+      const e = edgeById(state.edgeSel);
+      if (e) { e.color = c; renderEdges(); syncLayout(); markDirty(); return; }
+    }
+    setStatus("Color: " + c, "warn");
+  }
+
+  function selectTool(t) {
+    state.tool = t;
+    state.selected = null;
+    state.edgeSel = null;
+    $$(".wb-tool[data-wb-tool]").forEach(function (b) { b.classList.toggle("active", b.dataset.wbTool === t); });
+    $$("#wb-shapes-pop .wb-opt").forEach(function (b) { b.classList.toggle("active", b.dataset.wbTool === t); });
+    const stage = $("#wb-stage");
+    if (stage) {
+      stage.style.cursor =
+        t === "pan" ? "grab"
+        : (t === "pen" || t === "connector" || SHAPES.indexOf(t) !== -1) ? "crosshair"
+        : t === "text" ? "text"
+        : "default";
+    }
+    render();
+  }
+
+  function setBrush(name, activatePen) {
+    state.stroke = name;
+    const b = currentBrush();
+    const btn = $("#wb-pen-tool");
+    if (btn) btn.title = "Stroke: " + b.label + " (P)";
+    $("#wb-stroke-pop").querySelectorAll(".wb-opt").forEach(function (o) {
+      o.classList.toggle("active", o.dataset.brush === name);
+    });
+    if (activatePen) selectTool("pen");
+  }
+
+  // ---------- node creation ----------
+
+  function commitSticky(w) {
+    state.nodes.push({
+      id: nextId(),
+      type: "sticky",
+      x: w.x - STICKY_SIZE.w / 2,
+      y: w.y - STICKY_SIZE.h / 2,
+      w: STICKY_SIZE.w,
+      h: STICKY_SIZE.h,
+      z: maxZ() + 1,
+      color: STICKY_FILL,
+      text: "",
+    });
+    render();
+    editNode(state.nodes[state.nodes.length - 1]);
+    markDirty();
+  }
+
+  function commitText(w) {
+    const n = {
+      id: nextId(),
+      type: "text",
+      x: w.x,
+      y: w.y - 12,
+      w: 0,
+      h: 0,
+      z: maxZ() + 1,
+      color: state.color === TEXT_COLOR ? null : state.color,
+      text: "",
+    };
+    if (n.color === "#111827") n.color = "";
+    state.nodes.push(n);
+    render();
+    editNode(n);
+    markDirty();
+  }
+
+  function commitTable(w) {
+    const rows = [["", "", ""], ["", "", ""], ["", "", ""]];
+    state.nodes.push({
+      id: nextId(),
+      type: "table",
+      x: w.x - 150,
+      y: w.y - 85,
+      w: 300,
+      h: 170,
+      z: maxZ() + 1,
+      rows: rows,
+    });
+    render();
+    markDirty();
+  }
+
+  function editNode(n) {
+    const el = $("#wb-nodes [data-id='" + n.id + "']");
+    if (!el) return;
+    const inner = el.querySelector(".wb-node-text");
+    setTimeout(function () {
+      if (inner) {
+        inner.focus();
+        const sel = window.getSelection();
+        if (sel && sel.rangeCount) sel.selectAllChildren(inner);
+      }
+    }, 10);
+  }
+
+  function commitTextContent(el) {
+    const n = nodeById(el.dataset.id);
+    if (!n) return;
+    const inner = el.querySelector(".wb-node-text");
+    n.text = inner ? inner.textContent || "" : "";
+    if (n.type === "text") {
+      n.w = Math.max(80, el.scrollWidth + 10);
+      n.h = Math.max(24, el.scrollHeight);
+      render();
+    }
+    markDirty();
+  }
+
+  function commitTableContent(el) {
+    const n = nodeById(el.dataset.id);
+    if (!n) return;
+    const rows = [];
+    el.querySelectorAll("tr").forEach(function (tr) {
+      const row = [];
+      tr.querySelectorAll(".wb-cell").forEach(function (c) { row.push(c.textContent || ""); });
+      rows.push(row);
+    });
+    n.rows = rows;
+    n.w = Math.max(80, el.scrollWidth + 6);
+    n.h = Math.max(60, el.scrollHeight + 6);
+    markDirty();
+  }
+
+  // ---------- image import ----------
+
+  function readImageFile(file) {
+    return new Promise(function (resolve, reject) {
+      const rd = new FileReader();
+      rd.onload = function () {
+        const im = new Image();
+        im.onload = function () {
+          let w = im.width, h = im.height;
+          const scale = Math.max(w / (IMAGE_MAX_W * 2), h / (IMAGE_MAX_H * 2));
+          if (scale > 1) { w = Math.round(w / scale); h = Math.round(h / scale); }
+          const cv = document.createElement("canvas");
+          cv.width = w; cv.height = h;
+          cv.getContext("2d").drawImage(im, 0, 0, w, h);
+          const isPng = /png/i.test(file.type);
+          resolve(cv.toDataURL(isPng ? "image/png" : "image/jpeg", isPng ? undefined : 0.82));
+        };
+        im.onerror = function () { reject(new Error("image")); };
+        im.src = rd.result;
+      };
+      rd.onerror = function () { reject(new Error("read")); };
+      rd.readAsDataURL(file);
+    });
+  }
+
+  function addImage(src) {
+    const im = new Image();
+    im.onload = function () {
+      const V = state.view;
+      const r = stageRect();
+      const cx = (r.width / 2 - V.x) / V.zoom;
+      const cy = (r.height / 2 - V.y) / V.zoom;
+      let w = im.width, h = im.height;
+      const s = Math.min(IMAGE_MAX_W / w, IMAGE_MAX_H / h, 1);
+      w = Math.round(w * s); h = Math.round(h * s);
+      const n = {
+        id: nextId(),
+        type: "image",
+        x: cx - w / 2,
+        y: cy - h / 2,
+        w: Math.round(w),
+        h: Math.round(h),
+        w0: Math.round(w),
+        h0: Math.round(h),
+        z: maxZ() + 1,
+        src: src,
+      };
+      state.nodes.push(n);
+      selectTool("select");
+      state.selected = n.id;
+      render();
+      markDirty();
+      toast("Image added");
+    };
+    im.src = src;
+  }
+
+  // ---------- gestures ----------
+
+  function endGesture() {
+    g.kind = null;
+    g.node = null;
+    g.preview = null;
+    g.ink = null;
+    g.inkEl = null;
+    g.edge = null;
+    g.sizeFrom = null;
+    document.removeEventListener("pointermove", onMove);
+    document.removeEventListener("pointerup", onUp);
+    document.removeEventListener("pointercancel", onUp);
+    document.body.style.cursor = "";
+  }
+
+  function beginGesture() {
+    document.addEventListener("pointermove", onMove);
+    document.addEventListener("pointerup", onUp);
+    document.addEventListener("pointercancel", onUp);
+  }
+
+  function onDown(e) {
+    if (!active) return;
+    if (e.isPrimary === false) return;
+    if (e.pointerType && e.pointerType !== "mouse") e.preventDefault();
+    if (e.button !== 0 && e.button !== 1) return;
+    const cx = e.clientX;
+    const cy = e.clientY;
+
+    // Middle mouse always pans
+    if (e.button === 1) {
+      e.preventDefault();
+      g.kind = "pan";
+      g.view = { x: state.view.x, y: state.view.y };
+      g.start = { x: cx, y: cy };
+      beginGesture();
+      return;
+    }
+
+    const handle = e.target.closest(".wb-handle");
+    if (handle) {
+      e.preventDefault();
+      const n = nodeById(state.selected);
+      if (n) startResize(n, { x: cx, y: cy }, e);
+      return;
+    }
+
+    const ep = e.target.closest(".wb-ep");
+    if (ep && state.edgeSel) {
+      e.preventDefault();
+      startEdgeEndDrag(ep.dataset.which, { x: cx, y: cy }, e);
+      return;
+    }
+
+    if (state.tool === "select") {
+      if (e.target.closest('[contenteditable="true"]')) return;
+      const el = e.target.closest(".wb-node");
+      if (el) {
+        const n = nodeById(el.dataset.id);
+        if (n) {
+          state.selected = n.id;
+          state.edgeSel = null;
+          bringToFront(n);
+          render();
+          const nel = $("#wb-nodes [data-id='" + n.id + "']");
+          if (nel) nel.classList.add("dragging");
+          g.kind = "node";
+          g.start = { x: cx, y: cy };
+          g.from = toWorld(cx, cy);
+          g.nodeFrom = { x: n.x, y: n.y };
+          g.node = n;
+          beginGesture();
+        }
+        return;
+      }
+      const eHit = e.target.closest(".wb-edge-hit");
+      if (eHit) {
+        state.edgeSel = eHit.dataset.eid;
+        state.selected = null;
+        render();
+        return;
+      }
+      state.selected = null;
+      state.edgeSel = null;
+      render();
+      return;
+    }
+
+    const w = toWorld(cx, cy);
+
+    if (state.tool === "pan") {
+      e.preventDefault();
+      g.kind = "pan";
+      g.view = { x: state.view.x, y: state.view.y };
+      g.start = { x: cx, y: cy };
+      beginGesture();
+      return;
+    }
+
+    if (state.tool === "pen") {
+      e.preventDefault();
+      const br = currentBrush();
+      const d = {
+        id: nextId(),
+        color: state.color,
+        width: br.width,
+        opacity: br.opacity,
+        points: [[w.x, w.y]],
+      };
+      state.drawings.push(d);
+      render();
+      const ink = $("#wb-ink");
+      const stroke = document.createElementNS("http://www.w3.org/2000/svg", "path");
+      stroke.setAttribute("d", strokePathD(d.points));
+      stroke.setAttribute("fill", "none");
+      stroke.setAttribute("stroke", d.color);
+      stroke.setAttribute("stroke-width", d.width);
+      stroke.setAttribute("opacity", d.opacity);
+      stroke.setAttribute("stroke-linecap", "round");
+      stroke.setAttribute("stroke-linejoin", "round");
+      stroke.setAttribute("vector-effect", "non-scaling-stroke");
+      ink.appendChild(stroke);
+      g.kind = "pen";
+      g.ink = d;
+      g.inkEl = stroke;
+      beginGesture();
+      return;
+    }
+
+    if (state.tool === "line") {
+      e.preventDefault();
+      const ns = "http://www.w3.org/2000/svg";
+      const svgPre = document.createElementNS(ns, "line");
+      svgPre.id = "wb-line-preview";
+      svgPre.setAttribute("stroke", state.color);
+      svgPre.setAttribute("stroke-width", "2.5");
+      svgPre.setAttribute("stroke-linecap", "round");
+      svgPre.setAttribute("stroke-dasharray", "6 5");
+      svgPre.setAttribute("x1", w.x);
+      svgPre.setAttribute("y1", w.y);
+      svgPre.setAttribute("x2", w.x);
+      svgPre.setAttribute("y2", w.y);
+      $("#wb-edges").appendChild(svgPre);
+      g.kind = "lineDrag";
+      g.shapeType = "line";
+      g.from = { x: w.x, y: w.y };
+      g.preview = svgPre;
+      beginGesture();
+      return;
+    }
+
+    if (SHAPES.indexOf(state.tool) !== -1) {
+      e.preventDefault();
+      state.selected = null;
+      state.edgeSel = null;
+      const pre = document.createElement("div");
+      pre.className = "wb-preview wb-preview-" + state.tool + (state.tool === "ellipse" ? " wb-preview-round" : "");
+      pre.style.left = w.x + "px";
+      pre.style.top = w.y + "px";
+      pre.style.background = state.color;
+      if (state.fill === "transparent") pre.style.opacity = "0.4";
+      if (state.tool === "line") pre.style.background = "transparent";
+      $("#wb-nodes").appendChild(pre);
+      g.kind = "shape";
+      g.shapeType = state.tool;
+      g.from = { x: w.x, y: w.y };
+      g.preview = pre;
+      beginGesture();
+      return;
+    }
+
+    if (state.tool === "sticky") {
+      e.preventDefault();
+      commitSticky(w);
+      return;
+    }
+
+    if (state.tool === "text") {
+      e.preventDefault();
+      commitText(w);
+      return;
+    }
+
+    if (state.tool === "table") {
+      e.preventDefault();
+      commitTable(w);
+      return;
+    }
+
+    if (state.tool === "image") {
+      e.preventDefault();
+      $("#wb-image-input").click();
+      return;
+    }
+
+    if (state.tool === "connector") {
+      e.preventDefault();
+      const fromNode = nodeAt(w);
+      g.kind = "connector";
+      g.shapeType = "connector";
+      g.startP = { x: w.x, y: w.y };
+      g.from = { x: w.x, y: w.y };
+      g.connFromNode = fromNode ? fromNode.id : null;
+      g.connTo = { x: w.x, y: w.y };
+      beginGesture();
+      drawConnectorPreview();
+      return;
+    }
+  }
+
+  function drawConnectorPreview() {
+    const svg = $("#wb-edges");
+    let p = svg.querySelector("#wb-edge-preview");
+    if (!p) {
+      const ns = "http://www.w3.org/2000/svg";
+      p = document.createElementNS(ns, "path");
+      p.id = "wb-edge-preview";
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", state.color);
+      p.setAttribute("stroke-width", 2.2);
+      p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("stroke-dasharray", "6 5");
+      p.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(p);
+    }
+    const f = g.connFromNode ? center(nodeById(g.connFromNode)) : g.from;
+    const t = g.connTo;
+    p.setAttribute("d", "M" + f.x.toFixed(1) + "," + f.y.toFixed(1) + " L" + t.x.toFixed(1) + "," + t.y.toFixed(1));
+  }
+
+  function startResize(n, startClient, e) {
+    g.kind = "resize";
+    g.node = n;
+    g.start = { x: startClient.x, y: startClient.y };
+    g.from = toWorld(startClient.x, startClient.y);
+    g.sizeFrom = { x: n.x, y: n.y, w: n.w || 80, h: n.h || 40 };
+    beginGesture();
+  }
+
+  function startEdgeEndDrag(which, startClient, e) {
+    const edge = edgeById(state.edgeSel);
+    if (!edge) return;
+    g.kind = "edgeEnd";
+    g.edge = edge;
+    g.which = which;
+    g.start = { x: startClient.x, y: startClient.y };
+    g.from = toWorld(startClient.x, startClient.y);
+    const pts = edgePts(edge);
+    const cur = which === "from" ? pts.f : pts.t;
+    g.nodeFrom = { x: cur.x, y: cur.y };
+    beginGesture();
+  }
+
+  function onMove(e) {
+    if (!active || !g.kind) return;
+    const cx = e.clientX;
+    const cy = e.clientY;
+
+    if (g.kind === "pan") {
+      state.view.x = g.view.x + (cx - g.start.x);
+      state.view.y = g.view.y + (cy - g.start.y);
+      document.body.style.cursor = "grabbing";
+      applyView();
+      return;
+    }
+
+    const w = toWorld(cx, cy);
+
+    if (g.kind === "node" && g.node) {
+      g.node.x = g.nodeFrom.x + (w.x - g.from.x);
+      g.node.y = g.nodeFrom.y + (w.y - g.from.y);
+      const el = $("#wb-nodes [data-id='" + g.node.id + "']");
+      if (el) {
+        el.style.left = g.node.x + "px";
+        el.style.top = g.node.y + "px";
+      }
+      renderEdges();
+      syncLayout();
+      return;
+    }
+
+    if (g.kind === "resize" && g.node && g.sizeFrom) {
+      const n = g.node;
+      const ow = Math.max(24, g.sizeFrom.w + (w.x - g.from.x));
+      const oh = Math.max(24, g.sizeFrom.h + (w.y - g.from.y));
+      let nw = ow, nh = oh;
+      if (n.type === "image" && n.w0 && n.h0) {
+        const r = n.h0 / n.w0;
+        nw = ow;
+        nh = ow * r;
+      }
+      n.w = nw;
+      n.h = nh;
+      const el = $("#wb-nodes [data-id='" + n.id + "']");
+      if (el) {
+        el.style.width = nw + "px";
+        el.style.height = nh + "px";
+      }
+      renderEdges();
+      syncLayout();
+      return;
+    }
+
+    if (g.kind === "pen" && g.ink) {
+      g.ink.points.push([w.x, w.y]);
+      if (g.inkEl) g.inkEl.setAttribute("d", strokePathD(g.ink.points));
+      return;
+    }
+
+    if (g.kind === "shape" && g.preview) {
+      const x = Math.min(g.from.x, w.x);
+      const y = Math.min(g.from.y, w.y);
+      const h = Math.abs(w.x - g.from.x);
+      const v = Math.abs(w.y - g.from.y);
+      g.preview.style.left = x + "px";
+      g.preview.style.top = y + "px";
+      g.preview.style.width = Math.max(12, h) + "px";
+      g.preview.style.height = Math.max(12, v) + "px";
+      return;
+    }
+
+    if (g.kind === "lineDrag" && g.preview) {
+      g.preview.setAttribute("x1", g.from.x);
+      g.preview.setAttribute("y1", g.from.y);
+      g.preview.setAttribute("x2", w.x);
+      g.preview.setAttribute("y2", w.y);
+      return;
+    }
+
+    if (g.kind === "connector") {
+      g.connTo = { x: w.x, y: w.y };
+      drawConnectorPreview();
+      return;
+    }
+
+    if (g.kind === "edgeEnd" && g.edge) {
+      const hit = nodeAt(w);
+      const ep = g.edge[g.which];
+      if (hit) {
+        ep.node = hit.id;
+        ep.x = null;
+        ep.y = null;
+      } else {
+        ep.node = null;
+        ep.x = w.x;
+        ep.y = w.y;
+      }
+      renderEdges();
+      syncLayout();
+      return;
+    }
+  }
+
+  function onUp(e) {
+    if (!active || !g.kind) return;
+    const w = toWorld(e.clientX, e.clientY);
+
+    if (g.kind === "node" && g.node) {
+      const el = $("#wb-nodes [data-id='" + g.node.id + "']");
+      if (el) el.classList.remove("dragging");
+      endGesture();
+      markDirty();
+      render();
+      return;
+    }
+
+    if (g.kind === "resize" && g.node) {
+      endGesture();
+      markDirty();
+      render();
+      return;
+    }
+
+    if (g.kind === "pen") {
+      if (g.ink && g.ink.points.length < 3) {
+        g.ink.dot = true;
+        if (g.ink.points.length === 1) g.ink.points.push([g.ink.points[0][0], g.ink.points[0][1]]);
+      }
+      endGesture();
+      render();
+      markDirty();
+      return;
+    }
+
+    if (g.kind === "lineDrag") {
+      const h = Math.abs(w.x - g.from.x);
+      const v = Math.abs(w.y - g.from.y);
+      if (h > 10 || v > 10) {
+        const id = nextId();
+        state.nodes.push({
+          id: id,
+          type: "line",
+          x: Math.min(g.from.x, w.x),
+          y: Math.min(g.from.y, w.y),
+          w: Math.max(10, h),
+          h: Math.max(10, v),
+          z: maxZ() + 1,
+          color: state.color,
+          text: "",
+        });
+        state.selected = id;
+        state.edgeSel = null;
+      }
+      endGesture();
+      render();
+      markDirty();
+      return;
+    }
+
+    if (g.kind === "shape") {
+      const x = Math.min(g.from.x, w.x);
+      const y = Math.min(g.from.y, w.y);
+      const h = Math.abs(w.x - g.from.x);
+      const v = Math.abs(w.y - g.from.y);
+      const type = g.shapeType;
+      if (h > 10 || v > 10) {
+        const id = nextId();
+        state.nodes.push({
+          id: id,
+          type: type,
+          x: x,
+          y: y,
+          w: Math.max(24, h),
+          h: Math.max(24, v),
+          z: maxZ() + 1,
+          color: state.color,
+          text: "",
+          fill: state.fill,
+        });
+        state.selected = id;
+        state.edgeSel = null;
+        markDirty();
+      }
+      endGesture();
+      render();
+      markDirty();
+      return;
+    }
+
+    if (g.kind === "connector") {
+      const dist = Math.hypot(w.x - g.from.x, w.y - g.from.y);
+      const toNode = nodeAt(w);
+      const fromNode = g.connFromNode ? nodeById(g.connFromNode) : nodeAt(g.from);
+      endGesture();
+      if (dist > 12 && !(fromNode && toNode === fromNode)) {
+        const e = {
+          id: nextId(),
+          from: fromNode ? { node: fromNode.id, x: null, y: null } : { node: null, x: g.from.x, y: g.from.y },
+          to: toNode ? { node: toNode.id, x: null, y: null } : { node: null, x: w.x, y: w.y },
+          color: state.color,
+          width: 2.2,
+        };
+        state.edges.push(e);
+        state.edgeSel = e.id;
+        markDirty();
+      }
+      render();
+      return;
+    }
+
+    if (g.kind === "edgeEnd" && g.edge) {
+      endGesture();
+      markDirty();
+      render();
+      return;
+    }
+
+    if (g.kind === "pan") {
+      endGesture();
+      return;
+    }
+  }
+
+  // ---------- zoom / fit / clear ----------
+
+  function zoomBy(factor, cx, cy) {
+    const V = state.view;
+    const r = stageRect();
+    const px = cx !== undefined ? cx : r.left + r.width / 2;
+    const py = cy !== undefined ? cy : r.top + r.height / 2;
+    const wx = (px - r.left - V.x) / V.zoom;
+    const wy = (py - r.top - V.y) / V.zoom;
+    const nz = clamp(V.zoom * factor, MIN_ZOOM, MAX_ZOOM);
+    V.x = px - r.left - wx * nz;
+    V.y = py - r.top - wy * nz;
+    V.zoom = nz;
+    applyView();
+  }
+
+  function applyView() {
+    const V = state.view;
+    const w = $("#wb-world");
+    if (!w) return;
+    w.style.transform = "translate(" + V.x + "px, " + V.y + "px) scale(" + V.zoom + ")";
+    const zl = $("#wb-zoom-label");
+    if (zl) zl.textContent = Math.round(V.zoom * 100) + "%";
+    syncLayout();
+  }
+
+  function fitToScreen() {
+    const r = stageRect();
+    let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
+
+    function add(p) { if (p.x < minX) minX = p.x; if (p.y < minY) minY = p.y; if (p.x > maxX) maxX = p.x; if (p.y > maxY) maxY = p.y; }
+
+    state.nodes.forEach(function (n) {
+      add({ x: n.x, y: n.y });
+      add({ x: n.x + (n.w || 80), y: n.y + (n.h || 40) });
+    });
+    state.drawings.forEach(function (d) {
+      (d.points || []).forEach(function (p) { add({ x: p[0], y: p[1] }); });
+    });
+    state.edges.forEach(function (e) {
+      const pts = edgePts(e);
+      add(pts.f); add(pts.t);
+    });
+    if (!isFinite(minX)) { minX = 0; minY = 0; maxX = 400; maxY = 300; }
+    const bw = maxX - minX || 200;
+    const bh = maxY - minY || 150;
+    const zoom = Math.min(1.5, Math.min((r.width - 60) / bw, (r.height - 60) / bh));
+    state.view.zoom = clamp(zoom, MIN_ZOOM, MAX_ZOOM);
+    state.view.x = (r.width - bw * state.view.zoom) / 2 - minX * state.view.zoom;
+    state.view.y = (r.height - bh * state.view.zoom) / 2 - minY * state.view.zoom;
+    applyView();
+  }
+
+  function deleteSelected() {
+    if (state.selected) {
+      const n = nodeById(state.selected);
+      if (n) {
+        state.nodes = state.nodes.filter(function (x) { return x.id !== n.id; });
+        state.edges = state.edges.filter(function (e) { return (e.from && e.from.node) === n.id || (e.to && e.to.node) === n.id; });
+        state.selected = null;
+        render();
+        markDirty();
+      }
+    } else if (state.edgeSel) {
+      state.edges = state.edges.filter(function (e) { return e.id !== state.edgeSel; });
+      state.edgeSel = null;
+      render();
+      markDirty();
+    }
+  }
+
+  function clearBoard() {
+    state.nodes = [];
+    state.drawings = [];
+    state.edges = [];
+    state.view = { x: 40, y: 40, zoom: 1 };
+    state.selected = null;
+    state.edgeSel = null;
+    render();
+    markDirty();
+    toast("Board cleared");
+  }
+
+  // ---------- keyboard ----------
+
+  function onKey(e) {
+    const viewEl = $("#view-whiteboard");
+    if (!viewEl || viewEl.classList.contains("hidden")) return;
+    const tag = (e.target.tagName || "").toLowerCase();
+    const editable = tag === "input" || tag === "textarea" || e.target.isContentEditable;
+    if (editable) return;
+
+    const ctrl = e.ctrlKey || e.metaKey;
+    if (ctrl && e.key.toLowerCase() === "s") {
+      e.preventDefault();
+      doSave();
+      return;
+    }
+    if (ctrl) return;
+
+    const tools = { v: "select", h: "pan", p: "pen", l: "connector", s: "sticky", t: "text", i: "image", u: "table" };
+    const key = e.key.toLowerCase();
+    if (tools[key] && !e.altKey) {
+      closePops();
+      selectTool(tools[key]);
+      return;
+    }
+
+    if (key === "f" && !e.altKey) {
+      toggleFill();
+      return;
+    }
+
+    if (e.key === "Delete" || e.key === "Backspace") {
+      e.preventDefault();
+      deleteSelected();
+      return;
+    }
+
+    if (e.key === "Escape") {
+      if (!$("#wb-stroke-pop").classList.contains("hidden") || !$("#wb-color-pop").classList.contains("hidden") || !$("#wb-shapes-pop").classList.contains("hidden")) {
+        closePops();
+        return;
+      }
+      if (state.selected || state.edgeSel) {
+        state.selected = null;
+        state.edgeSel = null;
+        syncLayout();
+      } else {
+        selectTool("select");
+      }
+    }
+  }
+
+  function onWheel(e) {
+    if (!active) return;
+    const viewEl = $("#view-whiteboard");
+    if (!viewEl || viewEl.classList.contains("hidden")) return;
+    e.preventDefault();
+    zoomBy(e.deltaY < 0 ? 1.1 : 1 / 1.1, e.clientX, e.clientY);
+  }
+
+  function onNodeBlur(e) {
+    const host = e.target.closest(".wb-node");
+    if (!host) return;
+    if (host.classList.contains("wb-table")) {
+      commitTableContent(host);
+      return;
+    }
+    if (e.target.closest(".wb-cell")) return;
+    commitTextContent(host);
+  }
+
+  // ---------- init ----------
+
+  function bind() {
+    const stage = $("#wb-stage");
+    stage.addEventListener("pointerdown", onDown);
+    stage.addEventListener("wheel", onWheel, { passive: false });
+
+    $("#wb-nodes").addEventListener("focusout", onNodeBlur, true);
+    $("#wb-nodes").addEventListener("mousedown", function (e) {
+      if (e.target.closest(".wb-node") && !e.target.closest('[contenteditable="true"]')) {
+        e.preventDefault();
+      }
+    });
+
+    $("#wb-ep1").dataset.which = "from";
+    $("#wb-ep2").dataset.which = "to";
+
+    document.addEventListener("keydown", onKey);
+    document.addEventListener("click", function (e) {
+      if (!e.target.closest(".wb-pop-cur") && !e.target.closest(".wb-popout")) closePops();
+    });
+
+    $$(".wb-tool[data-wb-tool]").forEach(function (b) {
+      b.addEventListener("click", function () {
+        closePops();
+        selectTool(b.dataset.wbTool);
+      });
+    });
+
+    $("#wb-stroke-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-stroke-pop"); });
+    $("#wb-color-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-color-pop"); });
+    $("#wb-shapes-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-shapes-pop"); });
+
+    $$("#wb-stroke-pop .wb-opt").forEach(function (o) {
+      o.addEventListener("click", function () {
+        setBrush(o.dataset.brush, true);
+        closePops();
+      });
+    });
+    $$("#wb-shapes-pop .wb-opt").forEach(function (o) {
+      o.addEventListener("click", function () {
+        closePops();
+        selectTool(o.dataset.wbTool);
+      });
+    });
+
+    renderSwatches();
+    $("#wb-color-dot").style.background = state.color;
+    $("#wb-color-picker").value = state.color;
+    setBrush(state.stroke, false);
+    renderFillButton();
+    $("#wb-fill-btn").addEventListener("click", function (e) { e.stopPropagation(); toggleFill(); });
+    $("#wb-history").addEventListener("click", function (e) { e.stopPropagation(); openHistory(); });
+    $("#wb-color-picker").addEventListener("input", function (e) { applyColor(e.target.value); });
+
+    $("#wb-delete").addEventListener("click", function (e) {
+      e.stopPropagation();
+      if (state.selected || state.edgeSel) deleteSelected();
+      else toast("Select a shape to remove", "error");
+    });
+
+    const fileInput = $("#wb-image-input");
+    fileInput.addEventListener("change", function () {
+      const f = fileInput.files && fileInput.files[0];
+      if (f) {
+        setStatus("Reading image…", "busy");
+        readImageFile(f)
+          .then(function (src) { addImage(src); fileInput.value = ""; })
+          .catch(function () { setStatus("Image failed", "err"); fileInput.value = ""; });
+      }
+    });
+
+    $("#wb-zoom-in").addEventListener("click", function () { zoomBy(1.2); });
+    $("#wb-zoom-out").addEventListener("click", function () { zoomBy(1 / 1.2); });
+    $("#wb-fit").addEventListener("click", fitToScreen);
+    $("#wb-save").addEventListener("click", function () {
+      doSave().then(function (ok) {
+        toast(ok ? "Board saved" : "Could not save board", ok ? undefined : "error");
+      });
+    });
+    $("#wb-clear").addEventListener("click", function () {
+      const run = function () { closePops(); clearBoard(); };
+      if (window.confirmDialog) window.confirmDialog("Clear the entire whiteboard? This cannot be undone.", run);
+      else if (window.confirm("Clear the entire whiteboard? This cannot be undone.")) run();
+    });
+
+    booted = true;
+  }
+
+  window.WB = {
+    enter: function () {
+      active = true;
+      if (!booted) bind();
+      if (!loadedOnce) {
+        load().then(function () { loadedOnce = true; });
+      }
+    },
+    leave: function () { active = false; },
+  };
+})();</script><script>
+window.fetch=function(){var R={ok:true};R.json=function(){return Promise.resolve({data:{},updated_at:''});};return Promise.resolve(R);};
+window.toast=function(){}; window.confirmDialog=function(m,r){r();};
+window.WB.enter();
+</script></body></html>
