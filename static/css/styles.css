@@ -3461,6 +3461,7 @@ html, body { overflow-x: clip; }
   line-height: 1.5;
   color: #3f3a2e;
   overflow-wrap: anywhere;
+  user-select: text;
 }
 .wb-text .wb-node-text {
   padding: 2px 6px;
@@ -3471,6 +3472,43 @@ html, body { overflow-x: clip; }
   content: "Type…";
   opacity: 0.4;
 }
+.wb-node .wb-shape-text {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 6px;
+  font-size: 13px;
+  line-height: 1.4;
+  color: inherit;
+  cursor: text;
+}
+.wb-node .wb-shape-text:empty::before {
+  content: "Double-click to add text";
+  font-size: 11px;
+  opacity: 0;
+}
+.wb-node.editing .wb-shape-text:empty::before { opacity: 0.35; }
+.wb-node .wb-img-caption {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  max-height: 45%;
+  overflow: auto;
+  padding: 4px 8px;
+  font-size: 12px;
+  line-height: 1.35;
+  color: #fff;
+  background: rgba(0, 0, 0, 0.55);
+  border-radius: 0 0 6px 6px;
+  cursor: text;
+  display: none;
+}
+.wb-node .wb-img-caption:not(:empty),
+.wb-node.editing .wb-img-caption { display: block; }
 
 .wb-preview {
   position: absolute;
@@ -3654,7 +3692,7 @@ html, body { overflow-x: clip; }
 .dark .wb-popout { box-shadow: 0 12px 32px rgba(0, 0, 0, 0.55); }
 .wb-popout.wb-col { display: flex; flex-direction: column; gap: 2px; }
 .wb-popout.wb-col .wb-opt { display: flex; align-items: center; gap: 8px; width: 100%; }
-.wb-popout.wb-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 3px; }
+.wb-popout.wb-grid { display: grid; grid-template-columns: repeat(5, 1fr); gap: 3px; }
 
 .wb-opt {
   border: 0;
@@ -3677,6 +3715,20 @@ html, body { overflow-x: clip; }
   padding: 0;
 }
 .wb-opt.active { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
+
+.wb-font-opt {
+  border: 0;
+  background: transparent;
+  color: hsl(var(--foreground));
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 8px;
+  cursor: pointer;
+  text-align: left;
+  white-space: nowrap;
+}
+.wb-font-opt:hover { background: hsl(var(--accent)); }
+.wb-font-opt.active { background: hsl(var(--primary) / 0.16); color: hsl(var(--primary)); }
 
 .wb-color-dot {
   display: inline-block;
@@ -3783,6 +3835,13 @@ html, body { overflow-x: clip; }
   padding: 3px 4px;
   vertical-align: top;
 }
+.wb-table th {
+  border: 1px solid hsl(var(--border));
+  padding: 3px 4px;
+  vertical-align: top;
+  background: hsl(var(--muted));
+}
+.wb-table th .wb-cell { font-weight: 600; }
 .wb-cell {
   width: 100%;
   min-height: 20px;
@@ -3792,6 +3851,88 @@ html, body { overflow-x: clip; }
   color: hsl(var(--foreground));
   overflow-wrap: anywhere;
 }
+.wb-table-tools {
+  position: absolute;
+  top: -34px;
+  right: 0;
+  display: flex;
+  gap: 4px;
+  z-index: 4;
+}
+.wb-table-tools button {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 11.5px;
+  line-height: 1;
+  padding: 6px 8px;
+  border-radius: 8px;
+  cursor: pointer;
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.14);
+  white-space: nowrap;
+}
+.wb-table-tools button:hover { background: hsl(var(--accent)); }
+.wb-table-tools button.wb-tbl-del { color: hsl(0 75% 50%); }
+.wb-table-dlg {
+  position: absolute;
+  inset: 0;
+  z-index: 90;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding-top: 15vh;
+  pointer-events: none;
+}
+.wb-table-dlg-box {
+  pointer-events: auto;
+  min-width: 240px;
+  background: hsl(var(--card));
+  border: 1px solid hsl(var(--border));
+  border-radius: 14px;
+  box-shadow: 0 18px 48px rgba(0, 0, 0, 0.22);
+  padding: 16px;
+}
+.dark .wb-table-dlg-box { box-shadow: 0 18px 48px rgba(0, 0, 0, 0.6); }
+.wb-table-dlg-box h4 { margin: 0 0 12px; font-size: 14.5px; color: hsl(var(--foreground)); }
+.wb-table-dlg-grid { display: flex; gap: 12px; margin-bottom: 10px; }
+.wb-table-dlg-grid label {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: hsl(var(--muted-foreground));
+}
+.wb-table-dlg-grid input {
+  width: 76px;
+  border: 1px solid hsl(var(--border));
+  border-radius: 8px;
+  padding: 6px 8px;
+  background: hsl(var(--background));
+  color: hsl(var(--foreground));
+  font-size: 13px;
+}
+.wb-table-dlg-header {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  font-size: 13px;
+  color: hsl(var(--foreground));
+  margin-bottom: 14px;
+  cursor: pointer;
+}
+.wb-table-dlg-actions { display: flex; justify-content: flex-end; gap: 8px; }
+.wb-tbl-btn {
+  border: 1px solid hsl(var(--border));
+  background: hsl(var(--card));
+  color: hsl(var(--foreground));
+  font-size: 12.5px;
+  padding: 7px 14px;
+  border-radius: 9px;
+  cursor: pointer;
+}
+.wb-tbl-btn:hover { background: hsl(var(--accent)); }
+.wb-tbl-btn-primary { background: hsl(var(--primary)); border-color: transparent; color: hsl(var(--primary-foreground)); }
+.wb-tbl-btn-primary:hover { background: hsl(var(--primary) / 0.9); }
 .wb-node.wb-line { background: transparent !important; }
 .wb-node.wb-line svg { position: absolute; inset: 0; overflow: visible; }
 .wb-shape-stroke { position: absolute; inset: 0; overflow: visible; }
@@ -3811,6 +3952,28 @@ html, body { overflow-x: clip; }
 .wb-preview-hexagon { clip-path: polygon(25% 0, 75% 0, 100% 50%, 75% 100%, 25% 100%, 0 50%); }
 .wb-arrow,
 .wb-preview-arrow { clip-path: polygon(0 15%, 60% 15%, 60% 0, 100% 50%, 60% 100%, 60% 85%, 0 85%); }
+.wb-parallelogram,
+.wb-preview-parallelogram { clip-path: polygon(18% 0, 100% 0, 82% 100%, 0 100%); }
+.wb-pentagon,
+.wb-preview-pentagon { clip-path: polygon(50% 0, 100% 38%, 82% 100%, 18% 100%, 0 38%); }
+.wb-octagon,
+.wb-preview-octagon { clip-path: polygon(30% 0, 70% 0, 100% 30%, 100% 70%, 70% 100%, 30% 100%, 0 70%, 0 30%); }
+.wb-trapezoid,
+.wb-preview-trapezoid { clip-path: polygon(18% 0, 82% 0, 100% 100%, 0 100%); }
+.wb-cross,
+.wb-preview-cross { clip-path: polygon(35% 0, 65% 0, 65% 35%, 100% 35%, 100% 65%, 65% 65%, 65% 100%, 35% 100%, 35% 65%, 0 65%, 0 35%, 35% 35%); }
+.wb-sun,
+.wb-preview-sun { clip-path: polygon(50% 0, 58% 42%, 100% 50%, 58% 58%, 50% 100%, 42% 58%, 0 50%, 42% 42%); }
+.wb-left-arrow,
+.wb-preview-left-arrow { clip-path: polygon(52% 0, 52% 32%, 100% 32%, 100% 68%, 52% 68%, 52% 100%, 0 50%); }
+.wb-up-arrow,
+.wb-preview-up-arrow { clip-path: polygon(50% 0, 100% 35%, 70% 35%, 70% 100%, 30% 100%, 30% 35%, 0 35%); }
+.wb-down-arrow,
+.wb-preview-down-arrow { clip-path: polygon(50% 100%, 100% 65%, 70% 65%, 70% 0, 30% 0, 30% 65%, 0 65%); }
+.wb-double-arrow,
+.wb-preview-double-arrow { clip-path: polygon(25% 0, 40% 0, 40% 30%, 75% 30%, 75% 0, 100% 50%, 75% 100%, 75% 70%, 40% 70%, 40% 100%, 25% 100%, 0 50%); }
+.wb-heart,
+.wb-preview-heart { clip-path: polygon(50% 35%, 35% 15%, 12% 18%, 0 40%, 2% 60%, 22% 82%, 50% 100%, 78% 82%, 98% 60%, 100% 40%, 88% 18%, 65% 15%); }
 .wb-preview-round { border-radius: 50%; }
 .wb-rect,
 .wb-ellipse { border-radius: 0; border: 1px solid rgba(0, 0, 0, 0.14); box-shadow: 0 4px 14px rgba(0, 0, 0, 0.14); }

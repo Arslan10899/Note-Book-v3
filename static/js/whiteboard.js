@@ -27,7 +27,31 @@
     "#7c3aed", "#c026d3", "#db2777", "#64748b",
   ];
 
-  const SHAPES = ["rect", "ellipse", "triangle", "diamond", "star", "hexagon", "arrow", "line"];
+  const SHAPES = ["rect", "ellipse", "triangle", "diamond", "star", "hexagon", "arrow", "line", "parallelogram", "pentagon", "octagon", "trapezoid", "cross", "sun", "left-arrow", "up-arrow", "down-arrow", "double-arrow", "heart"];
+
+  const FONTS = [
+    { id: "sans",    label: "Sans",      css: "'Segoe UI', system-ui, sans-serif" },
+    { id: "arial",   label: "Arial",     css: "Arial, Helvetica, sans-serif" },
+    { id: "serif",   label: "Serif",     css: "Georgia, 'Times New Roman', serif" },
+    { id: "times",   label: "Times",     css: "'Times New Roman', Times, serif" },
+    { id: "georgia", label: "Georgia",   css: "Georgia, serif" },
+    { id: "mono",    label: "Mono",      css: "'Courier New', Consolas, monospace" },
+    { id: "courier", label: "Courier",   css: "'Courier New', monospace" },
+    { id: "comic",   label: "Comic",     css: "'Comic Sans MS', 'Segoe Print', cursive" },
+    { id: "hand",    label: "Hand",      css: "'Segoe Script', 'Comic Sans MS', cursive" },
+    { id: "impact",  label: "Impact",    css: "Impact, 'Arial Black', sans-serif" },
+    { id: "verdana", label: "Verdana",   css: "Verdana, Geneva, sans-serif" },
+  ];
+
+  function fontCss(id) {
+    const f = FONTS.find(function (x) { return x.id === id; });
+    return f ? f.css : FONTS[0].css;
+  }
+
+  function fontLabel(id) {
+    const f = FONTS.find(function (x) { return x.id === id; });
+    return f ? f.label : FONTS[0].label;
+  }
 
   const $ = (s, r) => (r || document).querySelector(s);
   const $$ = (s, r) => Array.prototype.slice.call((r || document).querySelectorAll(s));
@@ -37,6 +61,7 @@
   let loadedOnce = false;
   let dirty = false;
   let inkCanvas, inkCtx, inkLive;
+  let tablePending = null;
 
   const state = {
     view: { x: 0, y: 0, zoom: 1 },
@@ -47,6 +72,7 @@
     stroke: "pen",
     color: "#111827",
     fill: "solid",        // "solid" | "transparent"
+    font: "sans",
     selected: null,   // node id
     edgeSel: null,    // edge id
   };
@@ -111,6 +137,17 @@
     star:     "M50 0 L61 35 L98 35 L68 57 L79 91 L50 70 L21 91 L32 57 L2 35 L39 35 Z",
     hexagon:  "M25 0 L75 0 L100 50 L75 100 L25 100 L0 50 Z",
     arrow:    "M0 15 L60 15 L60 0 L100 50 L60 100 L60 85 L0 85 Z",
+    parallelogram: "M18 0 H100 V100 H0 Z",
+    pentagon: "M50 0 L100 38 L82 100 L18 100 L0 38 Z",
+    octagon:  "M30 0 H70 L100 30 V70 L70 100 H30 L0 70 V30 Z",
+    trapezoid: "M18 0 H82 L100 100 H0 Z",
+    cross:    "M35 0 H65 V35 H100 V65 H65 V100 H35 V65 H0 V35 H35 Z",
+    sun:      "M50 0 L58 42 L100 50 L58 58 L50 100 L42 58 L0 50 L42 42 Z",
+    "left-arrow": "M52 0 V32 H100 V68 H52 V100 L0 50 Z",
+    "up-arrow": "M50 0 L100 35 L70 35 V100 H30 V35 L0 35 Z",
+    "down-arrow": "M50 100 L100 65 L70 65 V0 H30 V65 L0 65 Z",
+    "double-arrow": "M25 0 L40 0 V30 L75 30 V0 L100 50 L75 100 V70 L40 70 V100 L25 100 L0 50 Z",
+    heart:    "M50 35 L35 15 L12 18 L0 40 L2 60 L22 82 L50 100 L78 82 L98 60 L100 40 L88 18 L65 15 Z",
   };
 
   function shapeStrokeEl(type, color) {
@@ -272,17 +309,19 @@
   function makeTableNode(n) {
     const tbl = document.createElement("table");
     tbl.className = "wb-table";
-    (n.rows || []).forEach(function (row) {
+    (n.rows || []).forEach(function (row, ri) {
       const tr = document.createElement("tr");
+      const isHead = n.header && ri === 0;
       row.forEach(function (cellTxt) {
-        const td = document.createElement("td");
+        const cell = document.createElement(isHead ? "th" : "td");
+        cell.className = isHead ? "wb-th" : "";
         const c = document.createElement("div");
         c.className = "wb-cell";
         c.contentEditable = "true";
         c.setAttribute("spellcheck", "false");
         c.textContent = cellTxt || "";
-        td.appendChild(c);
-        tr.appendChild(td);
+        cell.appendChild(c);
+        tr.appendChild(cell);
       });
       tbl.appendChild(tr);
     });
@@ -310,6 +349,7 @@
       inner.contentEditable = "true";
       inner.setAttribute("spellcheck", "false");
       inner.textContent = n.text || "";
+      inner.style.fontFamily = fontCss(n.font);
       el.appendChild(inner);
     } else if (type === "text") {
       el.style.width = n.w && n.w > 0 ? n.w + "px" : "auto";
@@ -319,6 +359,7 @@
       inner.contentEditable = "true";
       inner.setAttribute("spellcheck", "false");
       inner.textContent = n.text || "";
+      inner.style.fontFamily = fontCss(n.font);
       if (n.color) inner.style.color = n.color;
       el.appendChild(inner);
     } else if (type === "image") {
@@ -328,7 +369,14 @@
       img.alt = "";
       img.draggable = false;
       el.appendChild(img);
+      const cap = document.createElement("div");
+      cap.className = "wb-node-text wb-img-caption";
+      cap.setAttribute("spellcheck", "false");
+      cap.style.fontFamily = fontCss(n.font);
+      cap.textContent = n.text || "";
+      el.appendChild(cap);
     } else if (type === "table") {
+      if (n.id === state.selected) el.appendChild(makeTableTools(n));
       el.appendChild(makeTableNode(n));
     } else if (type === "line") {
       const svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
@@ -352,6 +400,14 @@
         el.style.background = n.color || state.color;
       }
       if (type === "ellipse") el.style.borderRadius = "50%";
+      if (type !== "line") {
+        const inner = document.createElement("div");
+        inner.className = "wb-node-text wb-shape-text";
+        inner.setAttribute("spellcheck", "false");
+        inner.style.fontFamily = fontCss(n.font);
+        inner.textContent = n.text || "";
+        el.appendChild(inner);
+      }
     } else {
       el.style.background = n.color || state.color;
     }
@@ -555,10 +611,11 @@
       view: state.view,
       nodes: state.nodes.map(function (n) {
         const o = { id: n.id, type: n.type, x: n.x, y: n.y, w: n.w, h: n.h, z: n.z, color: n.color, text: n.text };
+        if (n.font) o.font = n.font;
         if (n.fill) o.fill = n.fill;
         if (n.type === "image") o.src = n.src;
         if (n.type === "image" && n.w0 && n.h0) { o.w0 = n.w0; o.h0 = n.h0; }
-        if (n.type === "table") o.rows = n.rows;
+        if (n.type === "table") { o.rows = n.rows; o.header = n.header; }
         return o;
       }),
       edges: state.edges.map(function (e) {
@@ -727,6 +784,32 @@
     });
   }
 
+  function renderFonts() {
+    const wrap = $("#wb-font-pop");
+    if (!wrap) return;
+    wrap.innerHTML = "";
+    FONTS.forEach(function (f) {
+      const b = document.createElement("button");
+      b.type = "button";
+      b.className = "wb-font-opt" + (f.id === state.font ? " active" : "");
+      b.style.fontFamily = f.css;
+      b.dataset.font = f.id;
+      b.textContent = f.label;
+      b.addEventListener("click", function () { applyFont(f.id); });
+      wrap.appendChild(b);
+    });
+  }
+
+  function applyFont(id) {
+    state.font = id;
+    if (state.selected) {
+      const n = nodeById(state.selected);
+      if (n) { n.font = id; render(); markDirty(); }
+    }
+    renderFonts();
+    setStatus("Font: " + fontLabel(id), "ok");
+  }
+
   function applyColor(c) {
     state.color = c;
     $("#wb-color-dot").style.background = c;
@@ -788,6 +871,7 @@
       h: STICKY_SIZE.h,
       z: maxZ() + 1,
       color: STICKY_FILL,
+      font: state.font,
       text: "",
     });
     render();
@@ -805,6 +889,7 @@
       h: 0,
       z: maxZ() + 1,
       color: state.color === TEXT_COLOR ? null : state.color,
+      font: state.font,
       text: "",
     };
     if (n.color === "#111827") n.color = "";
@@ -814,20 +899,93 @@
     markDirty();
   }
 
-  function commitTable(w) {
-    const rows = [["", "", ""], ["", "", ""], ["", "", ""]];
-    state.nodes.push({
+  function commitTable(w, opts) {
+    const rows = Math.max(1, Math.min(40, +(opts && opts.rows) || 4));
+    const cols = Math.max(1, Math.min(40, +(opts && opts.cols) || 4));
+    const header = !(opts && opts.header === false);
+    const r = [];
+    for (let i = 0; i < rows; i++) r.push(Array(cols).fill(""));
+    const n = {
       id: nextId(),
       type: "table",
-      x: w.x - 150,
-      y: w.y - 85,
-      w: 300,
-      h: 170,
+      x: Math.max(0, w.x - cols * 40),
+      y: Math.max(0, w.y - rows * 15),
+      w: cols * 80,
+      h: Math.max(24, rows * 30),
       z: maxZ() + 1,
-      rows: rows,
-    });
+      rows: r,
+      header: header,
+    };
+    state.nodes.push(n);
+    selectTool("select");
+    state.selected = n.id;
     render();
     markDirty();
+  }
+
+  function enableNodeText(host) {
+    var t = host.querySelector(".wb-node-text");
+    if (!t) return;
+    var n = nodeById(host.dataset.id);
+    if (n && n.type === "table") return;
+    if (!host.classList.contains("wb-sticky") && !host.classList.contains("wb-text")) {
+      host.classList.add("editing");
+    }
+    t.contentEditable = "true";
+    t.focus();
+    var range = document.createRange();
+    range.selectNodeContents(t);
+    range.collapse(false);
+    var sel = window.getSelection();
+    sel.removeAllRanges();
+    sel.addRange(range);
+  }
+
+  function openTableDialog() {
+    const dlg = $("#wb-table-dlg");
+    if (!dlg) return;
+    dlg.classList.remove("hidden");
+    var r = $("#wb-tbl-rows"); if (r) { r.value = 4; r.focus(); }
+    var c = $("#wb-tbl-cols"); if (c) c.value = 4;
+    var h = $("#wb-tbl-header"); if (h) h.checked = true;
+  }
+  function closeTableDialog() {
+    var dlg = $("#wb-table-dlg"); if (dlg) dlg.classList.add("hidden");
+    tablePending = null;
+  }
+  function tableCreateFromDialog() {
+    if (!tablePending) { closeTableDialog(); return; }
+    var rows = parseInt($("#wb-tbl-rows").value, 10) || 4;
+    var cols = parseInt($("#wb-tbl-cols").value, 10) || 4;
+    var header = $("#wb-tbl-header").checked;
+    var w = tablePending;
+    closeTableDialog();
+    commitTable(w, { rows: rows, cols: cols, header: header });
+  }
+
+  function makeTableTools(n) {
+    const bar = document.createElement("div");
+    bar.className = "wb-table-tools";
+    [["+Row", "+row"], ["−Row", "-row"], ["+Col", "+col"], ["−Col", "-col"]].forEach(function (p) {
+      var b = document.createElement("button");
+      b.type = "button";
+      b.textContent = p[0];
+      b.dataset.tblAct = p[1];
+      b.title = p[0][0] === "+" ? "Add " + (p[1].indexOf("row") !== -1 ? "row" : "column") : "Delete " + (p[1].indexOf("row") !== -1 ? "row" : "column");
+      if (p[1][0] === "-") b.className = "wb-tbl-del";
+      bar.appendChild(b);
+    });
+    return bar;
+  }
+
+  function tableEdit(n, act) {
+    var rows = n.rows || [];
+    if (!rows.length) return;
+    if (act === "+row") { var cols0 = rows[0].length; rows.push(Array(cols0).fill("")); n.h = Math.max(24, n.h) + 30; }
+    else if (act === "-row") { if (rows.length > 1) { rows.pop(); n.h = Math.max(24, n.h - 30); } }
+    else if (act === "+col") { rows.forEach(function (r) { r.push(""); }); n.w = Math.max(60, n.w) + 80; }
+    else if (act === "-col") { if (rows[0].length > 1) rows.forEach(function (r) { r.pop(); }); n.w = Math.max(60, n.w - 80); }
+    render(); markDirty();
   }
 
   function editNode(n) {
@@ -955,6 +1113,8 @@
     if (e.isPrimary === false) return;
     if (e.pointerType && e.pointerType !== "mouse") e.preventDefault();
     if (e.button !== 0 && e.button !== 1) return;
+    if (e.target.closest(".wb-table-tools")) return;
+    if (!$("#wb-table-dlg").classList.contains("hidden")) { closeTableDialog(); return; }
     const cx = e.clientX;
     const cy = e.clientY;
 
@@ -1102,7 +1262,8 @@
 
     if (state.tool === "table") {
       e.preventDefault();
-      commitTable(w);
+      tablePending = w;
+      openTableDialog();
       return;
     }
 
@@ -1344,6 +1505,7 @@
           h: Math.max(24, v),
           z: maxZ() + 1,
           color: state.color,
+          font: state.font,
           text: "",
           fill: state.fill,
         });
@@ -1512,7 +1674,7 @@
     }
 
     if (e.key === "Escape") {
-      if (!$("#wb-stroke-pop").classList.contains("hidden") || !$("#wb-color-pop").classList.contains("hidden") || !$("#wb-shapes-pop").classList.contains("hidden")) {
+      if (!$("#wb-stroke-pop").classList.contains("hidden") || !$("#wb-color-pop").classList.contains("hidden") || !$("#wb-shapes-pop").classList.contains("hidden") || !$("#wb-font-pop").classList.contains("hidden")) {
         closePops();
         return;
       }
@@ -1542,7 +1704,14 @@
       return;
     }
     if (e.target.closest(".wb-cell")) return;
-    commitTextContent(host);
+    const inner = e.target.closest(".wb-node-text");
+    if (inner) {
+      commitTextContent(host);
+      if (!host.classList.contains("wb-sticky") && !host.classList.contains("wb-text")) {
+        host.classList.remove("editing");
+        inner.contentEditable = "false";
+      }
+    }
   }
 
   // ---------- init ----------
@@ -1558,6 +1727,14 @@
       if (e.target.closest(".wb-node") && !e.target.closest('[contenteditable="true"]')) {
         e.preventDefault();
       }
+    });
+
+    $("#wb-nodes").addEventListener("dblclick", function (e) {
+      var host = e.target.closest(".wb-node");
+      if (!host) return;
+      var n = nodeById(host.dataset.id);
+      if (!n || n.type === "table" || n.type === "line") return;
+      enableNodeText(host);
     });
 
     $("#wb-ep1").dataset.which = "from";
@@ -1578,6 +1755,7 @@
     $("#wb-stroke-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-stroke-pop"); });
     $("#wb-color-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-color-pop"); });
     $("#wb-shapes-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-shapes-pop"); });
+    $("#wb-font-btn").addEventListener("click", function (e) { e.stopPropagation(); togglePop("wb-font-pop"); });
 
     $$("#wb-stroke-pop .wb-opt").forEach(function (o) {
       o.addEventListener("click", function () {
@@ -1593,6 +1771,7 @@
     });
 
     renderSwatches();
+    renderFonts();
     $("#wb-color-dot").style.background = state.color;
     $("#wb-color-picker").value = state.color;
     setBrush(state.stroke, false);
@@ -1630,6 +1809,23 @@
       const run = function () { closePops(); clearBoard(); };
       if (window.confirmDialog) window.confirmDialog("Clear the entire whiteboard? This cannot be undone.", run);
       else if (window.confirm("Clear the entire whiteboard? This cannot be undone.")) run();
+    });
+
+    $("#wb-tbl-ok").addEventListener("click", function () { tableCreateFromDialog(); });
+    $("#wb-tbl-cancel").addEventListener("click", function () { closeTableDialog(); });
+    $("#wb-tbl-rows").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); tableCreateFromDialog(); } });
+    $("#wb-tbl-cols").addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); tableCreateFromDialog(); } });
+    document.addEventListener("keydown", function (e) {
+      if (!active) return;
+      if (e.key === "Escape" && !$("#wb-table-dlg").classList.contains("hidden")) { closeTableDialog(); }
+    });
+
+    $("#wb-nodes").addEventListener("click", function (e) {
+      const b = e.target.closest("[data-tbl-act]");
+      if (!b) return;
+      e.stopPropagation();
+      const n = nodeById(state.selected);
+      if (n && n.type === "table") tableEdit(n, b.dataset.tblAct);
     });
 
     booted = true;

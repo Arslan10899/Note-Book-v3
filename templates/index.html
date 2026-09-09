@@ -554,6 +554,10 @@
                 </div>
               </span>
               <span class="wb-pop-wrap">
+                <button type="button" id="wb-font-btn" class="wb-tool wb-pop-cur" title="Font"><svg xmlns="http://www.w3.org/2000/svg" width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 20V9v11z"/><path d="M16 20V11"/><path d="M6 15h12"/></svg></button>
+                <div id="wb-font-pop" class="wb-popout hidden wb-col"></div>
+              </span>
+              <span class="wb-pop-wrap">
                 <button type="button" id="wb-color-btn" class="wb-tool wb-pop-cur" title="Color"><span id="wb-color-dot" class="wb-color-dot"></span></button>
                 <div id="wb-color-pop" class="wb-popout hidden wb-col">
                   <div id="wb-swatches" class="wb-swatches"></div>
@@ -576,6 +580,17 @@
                   <button type="button" class="wb-opt" data-wb-tool="hexagon" title="Hexagon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="21 16 21 8 12 2 3 8 3 16 12 22 21 16"/></svg></button>
                   <button type="button" class="wb-opt" data-wb-tool="arrow" title="Block arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="10 2 20 12 10 22 10 16 2 16 2 8 10 8"/></svg></button>
                   <button type="button" class="wb-opt" data-wb-tool="line" title="Straight line"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><line x1="20" y1="4" x2="4" y2="20"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="parallelogram" title="Parallelogram"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M5 7h16l-2 10H3z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="pentagon" title="Pentagon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 3 21 8.5 17.5 18.5 6.5 18.5 3 8.5"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="octagon" title="Octagon"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="16 3 21 8 21 16 16 21 8 21 3 16 3 8 8 3"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="trapezoid" title="Trapezoid"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M6 7h12l3 10H3z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="cross" title="Cross"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 4h6v5h5v6h-5v5H9v-5H4V9h5z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="sun" title="Sun"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="4"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9 17 7M7 17l-2.1 2.1"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="left-arrow" title="Left arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="3 12 15 5 15 10 21 10 21 14 15 14 15 19 3 12"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="up-arrow" title="Up arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 5l9 8v2l-6-4v8H9v-8l-6 4v-7z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="down-arrow" title="Down arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l9-8v-2l-6 4V5H9v8l-6-4v7z"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="double-arrow" title="Double arrow"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="2 12 6 5 6 10 18 10 18 5 22 12 18 19 18 14 6 14 6 19 2 12"/></svg></button>
+                  <button type="button" class="wb-opt" data-wb-tool="heart" title="Heart"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21C6 16.5 2.5 13 2.5 8.8 2.5 6 4.8 3.8 7.5 3.8c2 0 3.5 1.2 4.5 3 1-1.8 2.5-3 4.5-3 2.7 0 5 2.2 5 5C21.5 13 18 16.5 12 21z"/></svg></button>
                 </div>
               </span>
             </div>
@@ -611,6 +626,20 @@
             <div id="wb-ep2" class="wb-ep hidden"></div>
             <div id="wb-empty" class="wb-empty hidden">Pick a tool above — pen, shapes, sticky notes, images, tables &amp; connectors</div>
             <span class="wb-hint">Wheel: zoom · Hand tool / middle-mouse: pan · Select: click &amp; drag items · Connector: drag shape-to-shape</span>
+            </div>
+            <div id="wb-table-dlg" class="wb-table-dlg hidden" role="dialog" aria-label="New table">
+              <div class="wb-table-dlg-box">
+                <h4>New table</h4>
+                <div class="wb-table-dlg-grid">
+                  <label>Rows <input type="number" id="wb-tbl-rows" min="1" max="40" value="4" /></label>
+                  <label>Columns <input type="number" id="wb-tbl-cols" min="1" max="40" value="4" /></label>
+                </div>
+                <label class="wb-table-dlg-header"><input type="checkbox" id="wb-tbl-header" checked /> First row is header</label>
+                <div class="wb-table-dlg-actions">
+                  <button type="button" id="wb-tbl-cancel" class="wb-tbl-btn">Cancel</button>
+                  <button type="button" id="wb-tbl-ok" class="wb-tbl-btn wb-tbl-btn-primary">Create</button>
+                </div>
+              </div>
             </div>
         </div>
       </section>
