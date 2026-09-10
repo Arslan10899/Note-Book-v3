@@ -75,6 +75,7 @@
     font: "sans",
     selected: null,   // node id
     edgeSel: null,    // edge id
+    connFrom: null,   // pending two-click connector source: {node:id} or {x,y}
   };
 
   const g = {
@@ -330,7 +331,7 @@
 
   function makeNodeEl(n) {
     const el = document.createElement("div");
-    el.className = "wb-node wb-" + (n.type || "rect") + (n.id === state.selected ? " selected" : "");
+    el.className = "wb-node wb-" + (n.type || "rect") + (n.id === state.selected ? " selected" : "") + (state.connFrom && state.connFrom.node === n.id ? " wb-conn-src" : "");
     el.dataset.id = n.id;
     el.style.left = n.x + "px";
     el.style.top = n.y + "px";
@@ -832,6 +833,7 @@
   }
 
   function selectTool(t) {
+    clearConnPending();
     state.tool = t;
     state.selected = null;
     state.edgeSel = null;
@@ -1308,6 +1310,60 @@
     p.setAttribute("d", "M" + f.x.toFixed(1) + "," + f.y.toFixed(1) + " L" + t.x.toFixed(1) + "," + t.y.toFixed(1));
   }
 
+  function connAnchor() {
+    if (!state.connFrom) return null;
+    if (state.connFrom.node) {
+      const n = nodeById(state.connFrom.node);
+      return n ? center(n) : null;
+    }
+    return { x: state.connFrom.x, y: state.connFrom.y };
+  }
+
+  function addConnectorEdge(fromNode, fromPt, toNode, toPt) {
+    const e = {
+      id: nextId(),
+      from: fromNode ? { node: fromNode.id, x: null, y: null } : { node: null, x: fromPt.x, y: fromPt.y },
+      to: toNode ? { node: toNode.id, x: null, y: null } : { node: null, x: toPt.x, y: toPt.y },
+      color: state.color,
+      width: 2.2,
+    };
+    state.edges.push(e);
+    state.edgeSel = e.id;
+    markDirty();
+    setStatus("Connector: link added", "ok");
+  }
+
+  function drawPendingLine(w) {
+    const a = connAnchor();
+    if (!a) return;
+    const svg = $("#wb-edges");
+    if (!svg) return;
+    let p = svg.querySelector("#wb-edge-preview");
+    if (!p) {
+      const ns = "http://www.w3.org/2000/svg";
+      p = document.createElementNS(ns, "path");
+      p.id = "wb-edge-preview";
+      p.setAttribute("fill", "none");
+      p.setAttribute("stroke", state.color);
+      p.setAttribute("stroke-width", 2.2);
+      p.setAttribute("stroke-linecap", "round");
+      p.setAttribute("stroke-dasharray", "6 5");
+      p.setAttribute("vector-effect", "non-scaling-stroke");
+      svg.appendChild(p);
+    }
+    p.setAttribute("d", "M" + a.x.toFixed(1) + "," + a.y.toFixed(1) + " L" + w.x.toFixed(1) + "," + w.y.toFixed(1));
+  }
+
+  function clearConnPending() {
+    if (!state.connFrom) return;
+    state.connFrom = null;
+    const svg = $("#wb-edges");
+    if (svg) {
+      const p = svg.querySelector("#wb-edge-preview");
+      if (p) p.remove();
+    }
+  }
+
   function startResize(n, startClient, e) {
     g.kind = "resize";
     g.node = n;
@@ -1329,6 +1385,13 @@
     const cur = which === "from" ? pts.f : pts.t;
     g.nodeFrom = { x: cur.x, y: cur.y };
     beginGesture();
+  }
+
+  function onHoverMove(e) {
+    if (!active || g.kind) return;
+    if (state.tool === "connector" && state.connFrom) {
+      drawPendingLine(toWorld(e.clientX, e.clientY));
+    }
   }
 
   function onMove(e) {
@@ -1524,17 +1587,31 @@
       const toNode = nodeAt(w);
       const fromNode = g.connFromNode ? nodeById(g.connFromNode) : nodeAt(g.from);
       endGesture();
-      if (dist > 12 && !(fromNode && toNode === fromNode)) {
-        const e = {
-          id: nextId(),
-          from: fromNode ? { node: fromNode.id, x: null, y: null } : { node: null, x: g.from.x, y: g.from.y },
-          to: toNode ? { node: toNode.id, x: null, y: null } : { node: null, x: w.x, y: w.y },
-          color: state.color,
-          width: 2.2,
-        };
-        state.edges.push(e);
-        state.edgeSel = e.id;
-        markDirty();
+      if (dist > 8 && !(fromNode && toNode === fromNode)) {
+        addConnectorEdge(fromNode, g.from, toNode, w);
+        clearConnPending();
+      } else if (!state.connFrom) {
+        const hitNode = fromNode || toNode;
+        if (hitNode) {
+          state.connFrom = { node: hitNode.id };
+          setStatus("Connector: ab target shape par click karein");
+        } else {
+          state.connFrom = { node: null, x: g.from.x, y: g.from.y };
+          setStatus("Connector: ab target par click karein");
+        }
+      } else {
+        const cf = state.connFrom;
+        const fN = cf.node ? nodeById(cf.node) : null;
+        const sameNode = fN && toNode && fN.id === toNode.id;
+        if (cf.node === null && !toNode) {
+          state.connFrom = { node: null, x: w.x, y: w.y };
+          setStatus("Connector: ab target par click karein");
+        } else if (cf.node && !fN) {
+          clearConnPending();
+        } else if (!sameNode) {
+          addConnectorEdge(fN, { x: cf.x || 0, y: cf.y || 0 }, toNode, w);
+          clearConnPending();
+        }
       }
       render();
       return;
@@ -1674,6 +1751,7 @@
     }
 
     if (e.key === "Escape") {
+      if (state.connFrom) { clearConnPending(); render(); return; }
       if (!$("#wb-stroke-pop").classList.contains("hidden") || !$("#wb-color-pop").classList.contains("hidden") || !$("#wb-shapes-pop").classList.contains("hidden") || !$("#wb-font-pop").classList.contains("hidden")) {
         closePops();
         return;
@@ -1741,6 +1819,7 @@
     $("#wb-ep2").dataset.which = "to";
 
     document.addEventListener("keydown", onKey);
+    stage.addEventListener("pointermove", onHoverMove);
     document.addEventListener("click", function (e) {
       if (!e.target.closest(".wb-pop-cur") && !e.target.closest(".wb-popout")) closePops();
     });

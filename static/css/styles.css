@@ -3806,6 +3806,16 @@ html, body { overflow-x: clip; }
 .wb-edge-hit { pointer-events: stroke; cursor: pointer; }
 .wb-edge-sel { filter: drop-shadow(0 0 2px hsl(var(--primary))); }
 
+.wb-node.wb-conn-src {
+  outline: 2px dashed hsl(var(--primary));
+  outline-offset: 4px;
+  animation: wb-conn-pulse 1.2s ease-in-out infinite;
+}
+@keyframes wb-conn-pulse {
+  0%, 100% { outline-color: hsl(var(--primary)); }
+  50% { outline-color: hsl(var(--accent)); }
+}
+
 .wb-node.wb-image { background: transparent !important; border-radius: 6px; }
 .wb-node-img {
   width: 100%;
