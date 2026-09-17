@@ -657,6 +657,12 @@ def migrate_db():
         kb_cols = [r[1] for r in conn.execute("PRAGMA table_info(knowledge_base)").fetchall()]
         if "created_by" not in kb_cols:
             conn.execute("ALTER TABLE knowledge_base ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
+        task_cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
+        if "user_id" not in task_cols:
+            conn.execute("ALTER TABLE tasks ADD COLUMN user_id INTEGER")
+        routine_cols = [r[1] for r in conn.execute("PRAGMA table_info(routines)").fetchall()]
+        if "user_id" not in routine_cols:
+            conn.execute("ALTER TABLE routines ADD COLUMN user_id INTEGER")
         user_cols = [r[1] for r in conn.execute("PRAGMA table_info(users)").fetchall()]
         if "avatar" not in user_cols:
             conn.execute("ALTER TABLE users ADD COLUMN avatar TEXT NOT NULL DEFAULT ''")
@@ -668,6 +674,8 @@ def migrate_db():
             CREATE INDEX IF NOT EXISTS idx_note_versions_note_id ON note_versions(note_id);
             CREATE INDEX IF NOT EXISTS idx_routine_completions_routine_id ON routine_completions(routine_id);
             CREATE INDEX IF NOT EXISTS idx_routine_completions_date ON routine_completions(completed_date);
+            CREATE INDEX IF NOT EXISTS idx_tasks_user_id ON tasks(user_id);
+            CREATE INDEX IF NOT EXISTS idx_routines_user_id ON routines(user_id);
             CREATE TABLE IF NOT EXISTS note_shares (
                 id INTEGER PRIMARY KEY AUTOINCREMENT,
                 token TEXT UNIQUE NOT NULL,
@@ -993,6 +1001,12 @@ def role_required(roles):
 
 can_write = role_required(WRITE_ROLES)      # add / edit data
 admin_only = role_required(("admin",))      # delete & destructive ops
+
+
+def _is_staff():
+    """admin/manager see & manage all records; regular users only their own."""
+    u = current_user()
+    return bool(u and u["role"] in WRITE_ROLES)
 
 
 # ---------------- Hybrid RAG: local knowledge base + cloud LLM ----------------
@@ -4107,10 +4121,10 @@ def _run_agent_action_core(decision, question="", wrap_result=True):
                 if errors:
                     raise ValueError("; ".join(errors))
                 cur = conn.execute(
-                    "INSERT INTO tasks (title, description, priority, due_date, created_at, created_by) "
-                    "VALUES (?, ?, ?, ?, ?, ?)",
+                    "INSERT INTO tasks (title, description, priority, due_date, created_at, created_by, user_id) "
+                    "VALUES (?, ?, ?, ?, ?, ?, ?)",
                     (payload["title"], payload.get("description", ""), payload.get("priority", "medium"),
-                     payload.get("due_date"), now_stamp(), "AI"),
+                     payload.get("due_date"), now_stamp(), "AI", session.get("uid")),
                 )
                 row = conn.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
             elif kind == "note":
@@ -4143,8 +4157,8 @@ def _run_agent_action_core(decision, question="", wrap_result=True):
                 if errors:
                     raise ValueError("; ".join(errors))
                 cur = conn.execute(
-                    "INSERT INTO routines (title, weekday, time, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
-                    (payload["title"], payload.get("weekday", 0), payload.get("time"), now_stamp(), "AI"),
+                    "INSERT INTO routines (title, weekday, time, created_at, created_by, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+                    (payload["title"], payload.get("weekday", 0), payload.get("time"), now_stamp(), "AI", session.get("uid")),
                 )
                 row = conn.execute("SELECT * FROM routines WHERE id = ?", (cur.lastrowid,)).fetchone()
             else:  # guideline
@@ -5755,6 +5769,36 @@ def auth_list_users():
     return jsonify([public_user(r) for r in rows])
 
 
+@app.post("/api/auth/users")
+@admin_required
+def auth_create_user():
+    data = request.get_json(silent=True) or {}
+    username = (data.get("username") or "").strip().lower()
+    password = str(data.get("password") or "")
+    display_name = (data.get("display_name") or "").strip()[:60]
+    role = data.get("role") or "user"
+    if not re.fullmatch(r"[a-z0-9_.]{3,24}", username):
+        return jsonify({"error": "Username: 3-24 chars, letters/numbers/._ only"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "Password must be at least 6 characters"}), 400
+    if role not in ("admin", "manager", "user"):
+        return jsonify({"error": "Role must be admin, manager or user"}), 400
+    conn = get_db()
+    try:
+        cur = conn.execute(
+            "INSERT INTO users (username, password_hash, display_name, role, created_at) VALUES (?, ?, ?, ?, ?)",
+            (username, generate_password_hash(password), display_name or username, role, now_stamp()),
+        )
+        conn.commit()
+        row = conn.execute("SELECT * FROM users WHERE id = ?", (cur.lastrowid,)).fetchone()
+    except sqlite3.IntegrityError:
+        return jsonify({"error": "Username already taken"}), 400
+    finally:
+        conn.close()
+    logger.info("user created by admin: id=%s username=%s role=%s", row["id"], row["username"], row["role"])
+    return jsonify(public_user(row)), 201
+
+
 @app.patch("/api/auth/users/<int:user_id>")
 @admin_required
 def auth_update_user(user_id):
@@ -5842,15 +5886,20 @@ def validate_task_payload(data, partial=False):
 @app.get("/api/tasks")
 def list_tasks():
     conn = get_db()
+    where = ""
+    args = []
+    if not _is_staff():
+        where = "WHERE user_id = ?"
+        args = [session.get("uid")]
     rows = conn.execute(
-        "SELECT * FROM tasks ORDER BY done ASC, CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id DESC"
+        "SELECT * FROM tasks " + where + " ORDER BY done ASC, CASE WHEN due_date IS NULL THEN 1 ELSE 0 END, due_date ASC, id DESC",
+        args,
     ).fetchall()
     conn.close()
     return jsonify([dict(r) for r in rows])
 
 
 @app.post("/api/tasks")
-@can_write
 def create_task():
     data = request.get_json(silent=True) or {}
     payload, errors = validate_task_payload(data)
@@ -5859,10 +5908,10 @@ def create_task():
     conn = get_db()
     creator = _user_display_name()
     cur = conn.execute(
-        "INSERT INTO tasks (title, description, priority, due_date, created_at, created_by, page_id) "
-        "VALUES (?, ?, ?, ?, ?, ?, ?)",
+        "INSERT INTO tasks (title, description, priority, due_date, created_at, created_by, page_id, user_id) "
+        "VALUES (?, ?, ?, ?, ?, ?, ?, ?)",
         (payload["title"], payload.get("description", ""), payload.get("priority", "medium"),
-         payload.get("due_date"), now_stamp(), creator, payload.get("page_id")),
+         payload.get("due_date"), now_stamp(), creator, payload.get("page_id"), session.get("uid")),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM tasks WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -5871,7 +5920,6 @@ def create_task():
 
 
 @app.patch("/api/tasks/<int:task_id>")
-@can_write
 def update_task(task_id):
     data = request.get_json(silent=True) or {}
     payload, errors = validate_task_payload(data, partial=True)
@@ -5884,6 +5932,10 @@ def update_task(task_id):
     if row is None:
         conn.close()
         return jsonify({"error": "Task not found"}), 404
+    u = current_user()
+    if not (u and (_is_staff() or row["user_id"] == u["id"])):
+        conn.close()
+        return jsonify({"error": "You can only edit your own tasks"}), 403
     fields = dict(row)
     fields.update(payload)
     completed_at = fields["completed_at"]
@@ -5901,9 +5953,16 @@ def update_task(task_id):
 
 
 @app.delete("/api/tasks/<int:task_id>")
-@admin_only
 def delete_task(task_id):
     conn = get_db()
+    row = conn.execute("SELECT * FROM tasks WHERE id = ?", (task_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Task not found"}), 404
+    u = current_user()
+    if not (u and (u["role"] == "admin" or row["user_id"] == u["id"])):
+        conn.close()
+        return jsonify({"error": "You can only delete your own tasks"}), 403
     cur = conn.execute("DELETE FROM tasks WHERE id = ?", (task_id,))
     conn.commit()
     conn.close()
@@ -7718,12 +7777,22 @@ def validate_routine_payload(data, partial=False):
 def list_routines():
     since = (date.today() - timedelta(days=90)).isoformat()
     conn = get_db()
-    rows = conn.execute("SELECT * FROM routines ORDER BY CASE WHEN active=1 THEN 0 ELSE 1 END, weekday, time IS NULL, time").fetchall()
+    where = ""
+    args = []
+    if not _is_staff():
+        where = "WHERE r.user_id = ?"
+        args = [session.get("uid")]
+    rows = conn.execute(
+        "SELECT r.* FROM routines r " + where + " ORDER BY CASE WHEN r.active=1 THEN 0 ELSE 1 END, r.weekday, r.time IS NULL, r.time",
+        args,
+    ).fetchall()
     comps = {}
-    for c in conn.execute(
-        "SELECT routine_id, completed_date FROM routine_completions WHERE completed_date >= ? ORDER BY completed_date DESC",
-        (since,),
-    ).fetchall():
+    comp_q = "SELECT c.routine_id, c.completed_date FROM routine_completions c JOIN routines r ON r.id = c.routine_id WHERE c.completed_date >= ?"
+    comp_args = [since]
+    if not _is_staff():
+        comp_q += " AND r.user_id = ?"
+        comp_args.append(session.get("uid"))
+    for c in conn.execute(comp_q, comp_args).fetchall():
         comps.setdefault(c["routine_id"], []).append(c["completed_date"])
     conn.close()
     out = []
@@ -7735,7 +7804,6 @@ def list_routines():
 
 
 @app.post("/api/routines")
-@can_write
 def create_routine():
     data = request.get_json(silent=True) or {}
     payload, errors = validate_routine_payload(data)
@@ -7744,8 +7812,8 @@ def create_routine():
     conn = get_db()
     creator = _user_display_name()
     cur = conn.execute(
-        "INSERT INTO routines (title, weekday, time, created_at, created_by) VALUES (?, ?, ?, ?, ?)",
-        (payload["title"], payload.get("weekday", 0), payload.get("time"), now_stamp(), creator),
+        "INSERT INTO routines (title, weekday, time, created_at, created_by, user_id) VALUES (?, ?, ?, ?, ?, ?)",
+        (payload["title"], payload.get("weekday", 0), payload.get("time"), now_stamp(), creator, session.get("uid")),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM routines WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -7756,7 +7824,6 @@ def create_routine():
 
 
 @app.patch("/api/routines/<int:routine_id>")
-@can_write
 def update_routine(routine_id):
     data = request.get_json(silent=True) or {}
     payload, errors = validate_routine_payload(data, partial=True)
@@ -7769,6 +7836,10 @@ def update_routine(routine_id):
     if row is None:
         conn.close()
         return jsonify({"error": "Routine not found"}), 404
+    u = current_user()
+    if not (u and (_is_staff() or row["user_id"] == u["id"])):
+        conn.close()
+        return jsonify({"error": "You can only edit your own routines"}), 403
     fields = dict(row)
     fields.update(payload)
     conn.execute(
@@ -7788,7 +7859,6 @@ def update_routine(routine_id):
 
 
 @app.post("/api/routines/<int:routine_id>/toggle")
-@can_write
 def toggle_routine(routine_id):
     data = request.get_json(silent=True) or {}
     d = data.get("date")
@@ -7797,9 +7867,14 @@ def toggle_routine(routine_id):
     except (TypeError, ValueError):
         return jsonify({"error": "date must be YYYY-MM-DD"}), 400
     conn = get_db()
-    if conn.execute("SELECT id FROM routines WHERE id = ?", (routine_id,)).fetchone() is None:
+    row = conn.execute("SELECT * FROM routines WHERE id = ?", (routine_id,)).fetchone()
+    if row is None:
         conn.close()
         return jsonify({"error": "Routine not found"}), 404
+    u = current_user()
+    if not (u and (_is_staff() or row["user_id"] == u["id"])):
+        conn.close()
+        return jsonify({"error": "You can only mark your own routines done"}), 403
     existing = conn.execute(
         "SELECT id FROM routine_completions WHERE routine_id = ? AND completed_date = ?",
         (routine_id, d),
@@ -7819,9 +7894,16 @@ def toggle_routine(routine_id):
 
 
 @app.delete("/api/routines/<int:routine_id>")
-@admin_only
 def delete_routine(routine_id):
     conn = get_db()
+    row = conn.execute("SELECT * FROM routines WHERE id = ?", (routine_id,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Routine not found"}), 404
+    u = current_user()
+    if not (u and (u["role"] == "admin" or row["user_id"] == u["id"])):
+        conn.close()
+        return jsonify({"error": "You can only delete your own routines"}), 403
     conn.execute("DELETE FROM routine_completions WHERE routine_id = ?", (routine_id,))
     cur = conn.execute("DELETE FROM routines WHERE id = ?", (routine_id,))
     conn.commit()
@@ -8559,6 +8641,9 @@ def export_task_xlsx(tid):
     conn.close()
     if not row:
         return jsonify({"error": "Not found"}), 404
+    u = current_user()
+    if not (u and (_is_staff() or row["user_id"] == u["id"])):
+        return jsonify({"error": "You can only export your own tasks"}), 403
     d = dict(row)
     d["status"] = "Done" if d.get("done") else "Pending"
     d.pop("done", None)

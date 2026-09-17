@@ -231,10 +231,10 @@ function currentRouteSegs() {
 }
 
 async function switchView(name) {
-  // View-only accounts are limited to Dashboard, Notes & Pages
-  if (state.user?.role === "user" && ["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"].includes(name)) {
+  // Regular users are limited: AI model management & agents stay admin tools
+  if (state.user?.role === "user" && ["chat-settings", "agents"].includes(name)) {
     name = "dashboard";
-    toast("Your account can only view Dashboard, Notes & Pages", "info");
+    toast("Only managers/admins can manage agents & AI models", "info");
   }
   state.view = name;
   if (name !== "pages" && !$("#notes-editor-wrap").classList.contains("hidden")) {
@@ -896,12 +896,16 @@ function afterAuthSuccess() {
 }
 
 // ---------- Role helpers ----------
-// user = view only · manager = add/edit · admin = full access incl. delete
+// user = own tasks/schedule/calendar + full chat · manager = add/edit · admin = full access incl. delete
 function canWrite() {
   return !!state.user && (state.user.role === "admin" || state.user.role === "manager");
 }
 function isAdminUser() {
   return !!state.user && state.user.role === "admin";
+}
+function canManageOwn() {
+  // any signed-in account can manage its own tasks / schedule / calendar rows
+  return canWrite() || !!state.user;
 }
 function requireWrite(what = "make changes") {
   if (canWrite()) return true;
@@ -911,7 +915,13 @@ function requireWrite(what = "make changes") {
 
 function applyRoleUI() {
   const w = canWrite();
-  ["#tasks-add-btn", "#sched-add-btn", "#notes-add-btn", "#pages-add-btn", "#viewer-edit-btn", "#knowledge-add-btn"].forEach((sel) => {
+  // Own-data resources: every signed-in account can add their own tasks & routines
+  ["#tasks-add-btn", "#sched-add-btn"].forEach((sel) => {
+    const el = $(sel);
+    if (el) el.classList.remove("hidden");
+  });
+  // Shared/global resources stay admin/manager-only
+  ["#notes-add-btn", "#pages-add-btn", "#viewer-edit-btn", "#knowledge-add-btn"].forEach((sel) => {
     const el = $(sel);
     if (el) el.classList.toggle("hidden", !w);
   });
@@ -920,8 +930,8 @@ function applyRoleUI() {
     const el = $(sel);
     if (el) el.classList.toggle("hidden", !isAdminUser());
   });
-  // View-only users see only Dashboard, Notes & Pages
-  const restricted = new Set(["tasks", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents"]);
+  // AI model management & agents are admin/manager tools; pages/notes stay shared (users read-only)
+  const restricted = new Set(["chat-settings", "agents"]);
   const isViewer = state.user?.role === "user";
   // Page detail: hide write controls for viewers (backend still enforces 403)
   const pageIconBtn = $("#page-icon-btn");
@@ -1154,7 +1164,7 @@ async function usersDialog() {
         <td class="py-2 pr-2 text-xs">${fmtStampShort(u.created_at)}</td>
         <td class="py-2 pr-2">
           <select class="input h-8 w-28 text-xs" data-role-select ${u.id === state.user.id ? "disabled title='You cannot change your own role'" : ""}>
-            <option value="user" ${u.role === "user" ? "selected" : ""}>User (view only)</option>
+            <option value="user" ${u.role === "user" ? "selected" : ""}>User (own data)</option>
             <option value="manager" ${u.role === "manager" ? "selected" : ""}>Manager</option>
             <option value="admin" ${u.role === "admin" ? "selected" : ""}>Admin</option>
           </select>
@@ -1169,7 +1179,35 @@ async function usersDialog() {
     .join("");
   openDialog(`
     <h2 class="text-lg font-semibold">Manage Users</h2>
-    <p class="mt-0.5 text-xs text-muted-foreground">Admins can change roles and remove accounts. Data is shared across all users.</p>
+    <p class="mt-0.5 text-xs text-muted-foreground">Admins can create accounts, change roles and remove users. Regular users manage their own Tasks, Schedule &amp; Calendar; chat/AI is per-account.</p>
+    <div class="mt-4">
+      <button type="button" class="btn btn-outline btn-sm" data-add-user-toggle>+ Add user</button>
+      <form id="add-user-form" class="mt-3 hidden grid grid-cols-2 gap-3 rounded-lg border border-border bg-accent/30 p-3">
+        <div class="space-y-1.5">
+          <label class="text-xs font-medium">Username</label>
+          <input id="au-username" type="text" class="input" placeholder="e.g. john" autocomplete="off" required />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-xs font-medium">Display name</label>
+          <input id="au-name" type="text" class="input" placeholder="e.g. John Doe" autocomplete="off" />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-xs font-medium">Password</label>
+          <input id="au-password" type="password" class="input" autocomplete="new-password" required />
+        </div>
+        <div class="space-y-1.5">
+          <label class="text-xs font-medium">Role</label>
+          <select id="au-role" class="input">
+            <option value="user">User (own data)</option>
+            <option value="manager">Manager</option>
+            <option value="admin">Admin</option>
+          </select>
+        </div>
+        <div class="col-span-2 flex justify-end">
+          <button type="submit" class="btn btn-primary btn-sm">Create user</button>
+        </div>
+      </form>
+    </div>
     <div class="mt-4 max-h-[50vh] overflow-x-auto overflow-y-auto">
       <table class="w-full min-w-[32rem]">
         <thead><tr class="border-b border-border text-left text-[10px] uppercase tracking-wide text-muted-foreground"><th class="pb-2 pr-2">Account</th><th class="pb-2 pr-2">Joined</th><th class="pb-2 pr-2">Role</th><th></th></tr></thead>
@@ -1180,6 +1218,23 @@ async function usersDialog() {
       <button type="button" class="btn btn-secondary" data-cancel-dialog>Close</button>
     </div>
   `);
+  $("[data-add-user-toggle]").addEventListener("click", () => $("#add-user-form").classList.toggle("hidden"));
+  $("#add-user-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const payload = {
+      username: $("#au-username").value.trim(),
+      display_name: $("#au-name").value.trim(),
+      password: $("#au-password").value,
+      role: $("#au-role").value,
+    };
+    try {
+      await api("/api/auth/users", { method: "POST", body: JSON.stringify(payload) });
+      toast("User created");
+      usersDialog();
+    } catch (err) {
+      toast(err.message, "error");
+    }
+  });
   $("[data-cancel-dialog]").addEventListener("click", closeDialog);
   $$("#dialog-root [data-role-select]").forEach((sel) =>
     sel.addEventListener("change", async () => {
@@ -3178,7 +3233,7 @@ function bindTaskToggles(scope) {
   scope.querySelectorAll("[data-toggle]").forEach((b) =>
     b.addEventListener("click", async (e) => {
       e.stopPropagation();
-      if (!requireWrite("mark tasks done")) return;
+      if (!canManageOwn()) return;
       const id = Number(b.dataset.toggle);
       const task = state.tasks.find((t) => t.id === id);
       try {
@@ -3199,7 +3254,7 @@ function bindTaskToggles(scope) {
 function bindRoutineToggles(scope) {
   scope.querySelectorAll("[data-routine-toggle]").forEach((b) =>
     b.addEventListener("click", async () => {
-      if (!requireWrite("mark routines done")) return;
+      if (!canManageOwn()) return;
       const id = Number(b.dataset.routineToggle);
       const d = b.dataset.date;
       try {
@@ -3282,7 +3337,7 @@ function renderTasks() {
 }
 
 function taskDialog(task = null, presetDate = null) {
-  if (!requireWrite(task ? "edit tasks" : "add tasks")) return;
+  if (!canManageOwn()) return;
   const isEdit = !!task;
   openDialog(`
     <h2 class="text-lg font-semibold">${isEdit ? "Edit task" : "New task"}</h2>
@@ -3399,8 +3454,8 @@ function renderSchedList() {
               </div>
               ${r.time ? `<span class="badge badge-secondary">${r.time}</span>` : ""}
               ${creatorChip(r)}
-              ${canWrite() ? `<button class="tool-btn" data-redit="${r.id}" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
-              ${isAdminUser() ? `<button class="tool-btn hover:text-destructive" data-rdel="${r.id}" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
+              ${canManageOwn() ? `<button class="tool-btn" data-redit="${r.id}" title="Edit"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21.174 6.812a1 1 0 0 0-3.986-3.987L3.842 16.174a2 2 0 0 0-.5.83l-1.321 4.352a.5.5 0 0 0 .623.622l4.353-1.32a2 2 0 0 0 .83-.497z"/></svg></button>` : ""}
+              ${canManageOwn() ? `<button class="tool-btn hover:text-destructive" data-rdel="${r.id}" title="Delete"><svg xmlns="http://www.w3.org/2000/svg" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M3 6h18"/><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"/><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"/></svg></button>` : ""}
             </div>`;
         })
         .join("")
@@ -3423,7 +3478,7 @@ function renderSchedList() {
 }
 
 function routineDialog(routine = null) {
-  if (!requireWrite(routine ? "edit routines" : "add routines")) return;
+  if (!canManageOwn()) return;
   const isEdit = !!routine;
   openDialog(`
     <h2 class="text-lg font-semibold">${isEdit ? "Edit routine" : "New routine"}</h2>
