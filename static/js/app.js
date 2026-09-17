@@ -25,6 +25,13 @@ const state = {
 
 let HOLIDAYS = {};
 
+const HOL_CN = { pk: " (Pakistan)", us: " (USA)", in: " (India)" };
+const HOL_BADGE = {
+  pk: ["bg-emerald-500/12 text-emerald-600 dark:text-emerald-400", "🇵🇰"],
+  us: ["bg-sky-500/12 text-sky-600 dark:text-sky-400", "🇺🇸"],
+  in: ["bg-orange-500/12 text-orange-600 dark:text-orange-400", "🇮🇳"],
+};
+
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
 const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", whiteboard: "Whiteboard", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide" };
@@ -3574,7 +3581,7 @@ function renderCalendar() {
       ? hols
           .map(
             (h) =>
-              `<span class="cal-hol ${h.country}" title="${escapeHtml(h.name)}${h.country === "pk" ? " (Pakistan)" : " (USA)"}">${h.name}</span>`
+              `<span class="cal-hol ${h.country}" title="${escapeHtml(h.name)}${HOL_CN[h.country] || ""}">${h.name}</span>`
           )
           .join("")
       : "";
@@ -3649,10 +3656,10 @@ function dayDialog(dateStr) {
     ${
       hols.length
         ? `<div class="mt-3 flex flex-wrap gap-1.5">${hols
-            .map(
-              (h) =>
-                `<span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${h.country === "pk" ? "bg-emerald-500/12 text-emerald-600 dark:text-emerald-400" : "bg-sky-500/12 text-sky-600 dark:text-sky-400"}">● ${escapeHtml(h.name)}${h.country === "pk" ? " 🇵🇰" : " 🇺🇸"}</span>`
-            )
+            .map((h) => {
+              const [hcls, hflg] = HOL_BADGE[h.country] || ["bg-zinc-500/12 text-zinc-600 dark:text-zinc-400", ""];
+              return `<span class="inline-flex items-center gap-1 rounded-md px-2 py-0.5 text-xs font-medium ${hcls}">● ${escapeHtml(h.name)}${hflg}</span>`;
+            })
             .join("")}</div>`
         : ""
     }

@@ -1930,6 +1930,14 @@ input[type="color"] {
   color: hsl(199 89% 68%);
 }
 
+.cal-hol.in {
+  background: hsl(27 96% 61% / .14);
+  color: hsl(23 85% 43%);
+}
+.dark .cal-hol.in {
+  color: hsl(28 95% 70%);
+}
+
 .cal-today.cal-holiday {
   box-shadow: inset 0 0 0 1.5px hsl(var(--primary));
 }
