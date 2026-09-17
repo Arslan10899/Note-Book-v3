@@ -1004,9 +1004,9 @@ admin_only = role_required(("admin",))      # delete & destructive ops
 
 
 def _is_staff():
-    """admin/manager see & manage all records; regular users only their own."""
+    """Only admin sees/manages all records; manager & user see only their own."""
     u = current_user()
-    return bool(u and u["role"] in WRITE_ROLES)
+    return bool(u and u["role"] == "admin")
 
 
 # ---------------- Hybrid RAG: local knowledge base + cloud LLM ----------------
