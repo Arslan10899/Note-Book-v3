@@ -7271,16 +7271,19 @@ function initApp() {
   wireUserMenu();
   applyRoleUI();
 
-  // World clocks: Pakistan + Burr Ridge, IL
+  // World clocks: Pakistan + Burr Ridge, IL + India
   const fmtPK = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Karachi" });
   const fmtUS = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "America/Chicago" });
+  const fmtIN = new Intl.DateTimeFormat("en-US", { hour: "2-digit", minute: "2-digit", hour12: true, timeZone: "Asia/Kolkata" });
   const tickClocks = () => {
     const t = new Date();
     const pk = $("#clock-pk");
     const us = $("#clock-us");
-    if (!pk || !us) return;
+    const ind = $("#clock-in");
+    if (!pk || !us || !ind) return;
     pk.textContent = fmtPK.format(t);
     us.textContent = fmtUS.format(t);
+    ind.textContent = fmtIN.format(t);
   };
   tickClocks();
   setInterval(tickClocks, 30000);
