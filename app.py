@@ -718,7 +718,26 @@ def migrate_db():
                 created_at TEXT NOT NULL DEFAULT '',
                 updated_at TEXT NOT NULL DEFAULT ''
             );
-            CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
+CREATE INDEX IF NOT EXISTS idx_agent_memory_agent ON agent_memory(agent_id);
+CREATE TABLE IF NOT EXISTS change_requests (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    kind TEXT NOT NULL DEFAULT '',
+    endpoint TEXT NOT NULL DEFAULT '',
+    method TEXT NOT NULL DEFAULT 'POST',
+    view_args TEXT NOT NULL DEFAULT '{}',
+    payload TEXT NOT NULL DEFAULT 'null',
+    summary TEXT NOT NULL DEFAULT '',
+    status TEXT NOT NULL DEFAULT 'pending',
+    requested_by INTEGER,
+    requested_by_name TEXT NOT NULL DEFAULT '',
+    requested_role TEXT NOT NULL DEFAULT '',
+    created_at TEXT NOT NULL DEFAULT '',
+    decided_by TEXT NOT NULL DEFAULT '',
+    decided_at TEXT NOT NULL DEFAULT '',
+    note TEXT NOT NULL DEFAULT ''
+);
+CREATE INDEX IF NOT EXISTS idx_change_requests_status ON change_requests(status);
+CREATE INDEX IF NOT EXISTS idx_change_requests_requester ON change_requests(requested_by);
             """
         )
         conn.execute(
@@ -1007,6 +1026,212 @@ def _is_staff():
     """Only admin sees/manages all records; manager & user see only their own."""
     u = current_user()
     return bool(u and u["role"] == "admin")
+
+
+# ---------------- Admin approval workflow ----------------
+# Managers & users can use AI Models / Agents, but their changes (API keys,
+# models, agents) affect system configuration, so they are queued as a
+# "change request" and only applied after an admin approves them.
+
+PENDING_MESSAGE = (
+    "Aap ki request admin ki confirmation ke liye pending hai. "
+    "Ye action system configuration ko affect kar sakta hai, is liye admin approve karne ke baad hi lagu hoga."
+)
+
+
+def _change_request_public(row):
+    d = dict(row)
+    for field in ("payload", "view_args"):
+        try:
+            d[field] = json.loads(d.get(field) or ("null" if field == "payload" else "{}"))
+        except (TypeError, ValueError):
+            d[field] = None if field == "payload" else {}
+    return d
+
+
+def _queue_change(kind, endpoint, view_args, payload, summary):
+    u = current_user()
+    conn = get_db()
+    cur = conn.execute(
+        "INSERT INTO change_requests (kind, endpoint, method, view_args, payload, summary, status, "
+        "requested_by, requested_by_name, requested_role, created_at) VALUES (?, ?, ?, ?, ?, ?, 'pending', ?, ?, ?, ?)",
+        (kind, endpoint, request.method, json.dumps(view_args or {}),
+         json.dumps(payload), str(summary or "")[:300], u["id"],
+         (u["display_name"] or u["username"] or "").strip(), u["role"], now_stamp()),
+    )
+    rid = cur.lastrowid
+    row = conn.execute("SELECT * FROM change_requests WHERE id = ?", (rid,)).fetchone()
+    conn.commit()
+    conn.close()
+    logger.info("change request #%s queued by %s (%s): %s", rid, u["username"], u["role"], str(summary)[:120])
+    return _change_request_public(row)
+
+
+def approvable(kind, summarize):
+    """Admin-only action for admins; queued as a pending request for everyone else."""
+
+    def deco(fn):
+        @wraps(fn)
+        def wrapper(*args, **kwargs):
+            u = current_user()
+            if not u:
+                return jsonify({"error": "Not authenticated"}), 401
+            if u["role"] == "admin":
+                return fn(*args, **kwargs)
+            data = request.get_json(silent=True)
+            try:
+                summary = summarize(data, kwargs) if callable(summarize) else str(summarize)
+            except Exception:
+                summary = kind
+            req = _queue_change(kind, fn.__name__, kwargs, data, summary)
+            return jsonify({"pending": True, "message": PENDING_MESSAGE, "request": req}), 202
+
+        return wrapper
+
+    return deco
+
+
+def _apply_change_request(req_row, admin_user):
+    """Replays the stored request through the original endpoint, as the admin."""
+    fn = app.view_functions.get(req_row["endpoint"])
+    if fn is None:
+        return False, "Action ab available nahi hai"
+    try:
+        stored = json.loads(req_row["view_args"] or "{}")
+    except (TypeError, ValueError):
+        stored = {}
+    kwargs = {}
+    for k, v in stored.items():
+        if isinstance(v, str) and (v.isdigit() or (v.startswith("-") and v[1:].isdigit())):
+            kwargs[k] = int(v)
+        else:
+            kwargs[k] = v
+    try:
+        payload = json.loads(req_row["payload"]) if req_row["payload"] else None
+    except (TypeError, ValueError):
+        payload = None
+    try:
+        with app.test_request_context(json=payload, method=req_row["method"] or "POST"):
+            session["uid"] = admin_user["id"]
+            session["role"] = admin_user["role"]
+            resp = fn(**kwargs)
+    except Exception as exc:  # noqa: BLE001
+        logger.error("change request #%s failed: %s", req_row["id"], exc)
+        return False, str(exc)
+    status = getattr(resp, "status_code", 200)
+    body = None
+    try:
+        body = resp.get_json()
+    except Exception:
+        body = None
+    if status >= 400:
+        err = (body or {}).get("error") if isinstance(body, dict) else None
+        return False, err or f"Action failed ({status})"
+    return True, body
+
+
+@app.get("/api/change-requests")
+def list_change_requests():
+    u = current_user()
+    conn = get_db()
+    if u["role"] == "admin":
+        rows = conn.execute(
+            "SELECT * FROM change_requests ORDER BY CASE status WHEN 'pending' THEN 0 ELSE 1 END, id DESC LIMIT 200"
+        ).fetchall()
+    else:
+        rows = conn.execute(
+            "SELECT * FROM change_requests WHERE requested_by = ? ORDER BY id DESC LIMIT 100", (u["id"],)
+        ).fetchall()
+    now_pending = conn.execute("SELECT COUNT(*) AS n FROM change_requests WHERE status = 'pending'").fetchone()["n"]
+    mine_pending = conn.execute(
+        "SELECT COUNT(*) AS n FROM change_requests WHERE status = 'pending' AND requested_by = ?", (u["id"],)
+    ).fetchone()["n"]
+    conn.close()
+    return jsonify({
+        "requests": [_change_request_public(r) for r in rows],
+        "pending": now_pending,
+        "mine_pending": mine_pending,
+        "is_admin": u["role"] == "admin",
+    })
+
+
+@app.post("/api/change-requests/<int:rid>/approve")
+@admin_required
+def approve_change_request(rid):
+    conn = get_db()
+    row = conn.execute("SELECT * FROM change_requests WHERE id = ?", (rid,)).fetchone()
+    conn.close()
+    if row is None:
+        return jsonify({"error": "Request not found"}), 404
+    if row["status"] != "pending":
+        return jsonify({"error": f"Request already {row['status']}"}), 400
+    ok, result = _apply_change_request(row, current_user())
+    u = current_user()
+    conn = get_db()
+    if ok:
+        conn.execute(
+            "UPDATE change_requests SET status = 'approved', decided_by = ?, decided_at = ? WHERE id = ?",
+            ((u["display_name"] or u["username"] or "").strip(), now_stamp(), rid),
+        )
+        conn.commit()
+        conn.close()
+        logger.info("change request #%s approved by %s", rid, u["username"])
+        return jsonify({"ok": True, "status": "approved", "result": result})
+    err = str(result)[:400]
+    conn.execute(
+        "UPDATE change_requests SET status = 'failed', note = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+        (err, (u["display_name"] or u["username"] or "").strip(), now_stamp(), rid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"error": f"Apply nahi ho saka: {err}"}), 400
+
+
+@app.post("/api/change-requests/<int:rid>/reject")
+@admin_required
+def reject_change_request(rid):
+    data = request.get_json(silent=True) or {}
+    u = current_user()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM change_requests WHERE id = ?", (rid,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Request not found"}), 404
+    if row["status"] != "pending":
+        conn.close()
+        return jsonify({"error": f"Request already {row['status']}"}), 400
+    conn.execute(
+        "UPDATE change_requests SET status = 'rejected', note = ?, decided_by = ?, decided_at = ? WHERE id = ?",
+        (str(data.get("note") or "")[:300], (u["display_name"] or u["username"] or "").strip(), now_stamp(), rid),
+    )
+    conn.commit()
+    conn.close()
+    logger.info("change request #%s rejected by %s", rid, u["username"])
+    return jsonify({"ok": True, "status": "rejected"})
+
+
+@app.delete("/api/change-requests/<int:rid>")
+def cancel_change_request(rid):
+    """Requester (or admin) can cancel their own pending request."""
+    u = current_user()
+    conn = get_db()
+    row = conn.execute("SELECT * FROM change_requests WHERE id = ?", (rid,)).fetchone()
+    if row is None:
+        conn.close()
+        return jsonify({"error": "Request not found"}), 404
+    if row["status"] != "pending":
+        conn.close()
+        return jsonify({"error": f"Request already {row['status']}"}), 400
+    if u["role"] != "admin" and row["requested_by"] != u["id"]:
+        conn.close()
+        return jsonify({"error": "Not allowed"}), 403
+    conn.execute(
+        "UPDATE change_requests SET status = 'cancelled', decided_by = ?, decided_at = ? WHERE id = ?",
+        ((u["display_name"] or u["username"] or "").strip(), now_stamp(), rid),
+    )
+    conn.commit()
+    conn.close()
+    return jsonify({"ok": True, "status": "cancelled"})
 
 
 # ---------------- Hybrid RAG: local knowledge base + cloud LLM ----------------
@@ -6527,13 +6752,12 @@ def _chat_settings_payload():
 
 
 @app.get("/api/chat/settings")
-@admin_only
 def chat_settings_get():
     return jsonify(_chat_settings_payload())
 
 
 @app.put("/api/chat/settings")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"AI model settings update ({'provider: ' + str((d or {}).get('provider') or '?')})")
 def chat_settings_save():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6575,7 +6799,7 @@ def chat_settings_save():
 
 
 @app.delete("/api/chat/settings/<provider>")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"AI model reset ({kw.get('provider', '?')})")
 def chat_settings_delete(provider):
     if provider not in CHAT_PROVIDERS:
         return jsonify({"error": "Unknown provider"}), 400
@@ -6590,6 +6814,7 @@ def chat_settings_delete(provider):
 
 
 @app.post("/api/chat/settings/active")
+@approvable("ai_models", lambda d, kw: f"Switch active AI provider ({'provider: ' + str((d or {}).get('provider') or '?')})")
 def chat_settings_active():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6604,7 +6829,6 @@ def chat_settings_active():
 
 
 @app.post("/api/chat/settings/test")
-@admin_only
 def chat_settings_test():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6636,7 +6860,7 @@ def chat_settings_test():
 
 
 @app.post("/api/chat/keys")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"Naya API key add ({'provider: ' + str((d or {}).get('provider') or '?')})")
 def chat_keys_add():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6662,7 +6886,7 @@ def chat_keys_add():
 
 
 @app.put("/api/chat/keys/<int:key_id>")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"API key edit (id: {kw.get('key_id', '?')})")
 def chat_keys_put(key_id):
     data = request.get_json(silent=True) or {}
     conn = get_db()
@@ -6690,7 +6914,7 @@ def chat_keys_put(key_id):
 
 
 @app.post("/api/chat/keys/active")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"Active API key change (provider: {str((d or {}).get('provider') or '?')})")
 def chat_keys_active():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6704,7 +6928,7 @@ def chat_keys_active():
 
 
 @app.post("/api/chat/keys/rotate")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"API key rotate (provider: {str((d or {}).get('provider') or '?')})")
 def chat_keys_rotate():
     data = request.get_json(silent=True) or {}
     provider = str(data.get("provider") or "").strip()
@@ -6715,7 +6939,7 @@ def chat_keys_rotate():
 
 
 @app.delete("/api/chat/keys/<int:key_id>")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"API key delete (id: {kw.get('key_id', '?')})")
 def chat_keys_delete(key_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM chat_api_keys WHERE id = ?", (key_id,)).fetchone()
@@ -6766,7 +6990,7 @@ def chat_agent_get():
 
 
 @app.put("/api/chat/agent")
-@admin_only
+@approvable("agents", lambda d, kw: f"Actions Agent {('ON' if (d or {}).get('enabled') else 'OFF')}")
 def chat_agent_set():
     data = request.get_json(silent=True) or {}
     enabled = 1 if data.get("enabled") in (True, 1, "true", "1") else 0
@@ -6776,7 +7000,7 @@ def chat_agent_set():
 
 
 @app.put("/api/chat/live")
-@admin_only
+@approvable("ai_models", lambda d, kw: f"Live Chat AI {('ON' if (d or {}).get('enabled') else 'OFF')}")
 def chat_live_set():
     data = request.get_json(silent=True) or {}
     enabled = 1 if data.get("enabled") in (True, 1, "true", "1") else 0
@@ -6785,7 +7009,6 @@ def chat_live_set():
 
 
 @app.get("/api/chat/routing")
-@admin_only
 def chat_routing_get():
     return jsonify({
         "auto": _app_setting("route_auto", "1"),
@@ -6799,7 +7022,7 @@ def chat_routing_get():
 
 
 @app.put("/api/chat/routing")
-@admin_only
+@approvable("ai_models", lambda d, kw: "Chat routing update")
 def chat_routing_set():
     data = request.get_json(silent=True) or {}
     if "auto" in data:
@@ -6816,7 +7039,6 @@ def chat_routing_set():
 
 
 @app.post("/api/chat/routing/test")
-@admin_only
 def chat_routing_test():
     data = request.get_json(silent=True) or {}
     message = str(data.get("message") or "").strip()
@@ -6835,13 +7057,12 @@ def chat_routing_test():
 
 
 @app.get("/api/tools")
-@admin_only
 def api_tools_list():
     return jsonify({"tools": _api_tools(enabled_only=False)})
 
 
 @app.post("/api/tools")
-@admin_only
+@approvable("tools", lambda d, kw: f"Naya API tool ({'name: ' + str((d or {}).get('name') or '?')})")
 def api_tools_create():
     data = request.get_json(silent=True) or {}
     name = str(data.get("name") or "").strip()[:80]
@@ -6867,7 +7088,7 @@ def api_tools_create():
 
 
 @app.put("/api/tools/<int:tool_id>")
-@admin_only
+@approvable("tools", lambda d, kw: f"API tool edit (id: {kw.get('tool_id', '?')})")
 def api_tools_update(tool_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM api_tools WHERE id = ?", (tool_id,)).fetchone()
@@ -6899,7 +7120,7 @@ def api_tools_update(tool_id):
 
 
 @app.delete("/api/tools/<int:tool_id>")
-@admin_only
+@approvable("tools", lambda d, kw: f"API tool delete (id: {kw.get('tool_id', '?')})")
 def api_tools_delete(tool_id):
     conn = get_db()
     row = conn.execute("SELECT * FROM api_tools WHERE id = ?", (tool_id,)).fetchone()
@@ -7289,7 +7510,7 @@ def system_capabilities():
 
 
 @app.post("/api/agents")
-@admin_only
+@approvable("agents", lambda d, kw: f"Naya agent create ({'name: ' + str((d or {}).get('name') or '?')})")
 def agents_create():
     data = request.get_json(silent=True) or {}
     name = str(data.get("name") or "").strip()
@@ -7310,7 +7531,7 @@ def agents_create():
 
 
 @app.put("/api/agents/<int:aid>")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent edit ({'name: ' + str((d or {}).get('name') or ('id ' + str(kw.get('aid', '?'))))})")
 def agents_update(aid):
     data = request.get_json(silent=True) or {}
     conn = get_db()
@@ -7334,7 +7555,7 @@ def agents_update(aid):
 
 
 @app.post("/api/agents/<int:aid>/active")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent ON (id: {kw.get('aid', '?')})")
 def agents_set_active(aid):
     """Turn ON one agent (multi-active: others stay ON)."""
     conn = get_db()
@@ -7350,7 +7571,7 @@ def agents_set_active(aid):
 
 
 @app.post("/api/agents/off")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent OFF ({'id: ' + str((d or {}).get('id')) if (d or {}).get('id') is not None else 'all agents'})")
 def agents_off():
     """Turn OFF one agent (body {\"id\": N}) or all agents when no id given."""
     data = request.get_json(silent=True) or {}
@@ -7374,7 +7595,7 @@ def agents_off():
 
 
 @app.delete("/api/agents/<int:aid>")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent delete (id: {kw.get('aid', '?')})")
 def agents_delete(aid):
     conn = get_db()
     row = conn.execute("SELECT * FROM chat_agents WHERE id = ?", (aid,)).fetchone()
@@ -7390,7 +7611,7 @@ def agents_delete(aid):
 
 
 @app.post("/api/agents/<int:aid>/memory")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent memory add (agent id: {kw.get('aid', '?')})")
 def agent_memory_create(aid):
     data = request.get_json(silent=True) or {}
     conn = get_db()
@@ -7422,7 +7643,7 @@ def agent_memory_create(aid):
 
 
 @app.put("/api/agents/<int:aid>/memory/<int:mid>")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent memory edit (agent id: {kw.get('aid', '?')})")
 def agent_memory_update(aid, mid):
     data = request.get_json(silent=True) or {}
     conn = get_db()
@@ -7448,7 +7669,7 @@ def agent_memory_update(aid, mid):
 
 
 @app.delete("/api/agents/<int:aid>/memory/<int:mid>")
-@admin_only
+@approvable("agents", lambda d, kw: f"Agent memory delete (agent id: {kw.get('aid', '?')})")
 def agent_memory_delete(aid, mid):
     conn = get_db()
     row = conn.execute("SELECT * FROM agent_memory WHERE id = ? AND agent_id = ?", (mid, aid)).fetchone()

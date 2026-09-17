@@ -34,7 +34,7 @@ const HOL_BADGE = {
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 const MONTHS = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
-const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", whiteboard: "Whiteboard", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide" };
+const VIEW_TITLES = { dashboard: "Dashboard", tasks: "Tasks", notes: "Notes", pages: "Pages", webportals: "Web portals", whiteboard: "Whiteboard", schedule: "Schedule", calendar: "Calendar", settings: "Settings", chat: "Chat", knowledge: "Knowledge Base", "chat-settings": "AI Models", agents: "Agents", "system-guide": "System Guide", approvals: "Approvals" };
 
 function escapeHtml(s) {
   return String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -174,6 +174,62 @@ function confirmDialog(message, onOk, okLabel = "Delete") {
   });
 }
 
+// ---- Admin approval workflow helpers ----
+function showPendingNotice(message) {
+  openDialog(`
+    <div class="flex items-start gap-3">
+      <div class="mt-0.5 rounded-full bg-amber-500/15 p-2 text-amber-600 dark:text-amber-400">
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+      </div>
+      <div>
+        <h3 class="text-base font-semibold">Request admin confirmation ke liye pending hai</h3>
+        <p class="mt-1 text-sm text-muted-foreground">${escapeHtml(message || "Ye action system configuration ko affect kar sakta hai, is liye admin approve karne ke baad hi lagu hoga.")}</p>
+        <p class="mt-2 text-xs text-muted-foreground">Admin <b>Approvals</b> page se approve karega, phir ye change system par lagu ho jayega.</p>
+      </div>
+    </div>
+    <div class="mt-5 flex justify-end">
+      <button type="button" class="btn btn-outline" id="pending-ok">Samajh gaya</button>
+    </div>
+  `);
+  $("#pending-ok").addEventListener("click", closeDialog);
+  refreshApprovalsBadge();
+}
+
+// Returns true (and shows the notice) when the server queued the change for approval.
+function checkPending(res) {
+  if (res && res.pending) {
+    showPendingNotice(res.message);
+    return true;
+  }
+  return false;
+}
+
+async function refreshApprovalsBadge() {
+  try {
+    const res = await api("/api/change-requests");
+    const count = res.is_admin ? res.pending : res.mine_pending;
+    const badge = $("#approvals-badge");
+    const navBadge = $("#approvals-nav-badge");
+    [badge, navBadge].forEach((el) => {
+      if (!el) return;
+      if (count > 0) {
+        el.textContent = count > 99 ? "99+" : String(count);
+        el.classList.remove("hidden");
+      } else {
+        el.classList.add("hidden");
+      }
+    });
+    const btn = $("#approvals-btn");
+    if (btn) {
+      const show = res.is_admin ? res.pending > 0 : true;
+      btn.classList.toggle("hidden", !show);
+    }
+    return res;
+  } catch (e) {
+    return null;
+  }
+}
+
 function applyTheme(theme) {
   localStorage.setItem("theme", theme);
   document.documentElement.classList.toggle("dark", theme === "dark");
@@ -238,11 +294,6 @@ function currentRouteSegs() {
 }
 
 async function switchView(name) {
-  // Regular users are limited: AI model management & agents stay admin tools
-  if (state.user?.role === "user" && ["chat-settings", "agents"].includes(name)) {
-    name = "dashboard";
-    toast("Only managers/admins can manage agents & AI models", "info");
-  }
   state.view = name;
   if (name !== "pages" && !$("#notes-editor-wrap").classList.contains("hidden")) {
     // Leaving while an editor is open: wait for pending changes to reach the
@@ -272,6 +323,7 @@ async function switchView(name) {
   else if (name === "chat-settings") loadChatSettings();
   else if (name === "agents") loadAgents();
   else if (name === "system-guide") loadSystemGuide();
+  else if (name === "approvals") loadApprovals();
   else if (name === "calendar") {
     HOLIDAYS = buildHolidaysForYear(state.calY);
     renderCalendar();
@@ -937,8 +989,8 @@ function applyRoleUI() {
     const el = $(sel);
     if (el) el.classList.toggle("hidden", !isAdminUser());
   });
-  // AI model management & agents are admin/manager tools; pages/notes stay shared (users read-only)
-  const restricted = new Set(["chat-settings", "agents"]);
+  // AI Models & Agents ab sab roles ke liye open hain; changes admin approval se apply hote hain
+  const restricted = new Set();
   const isViewer = state.user?.role === "user";
   // Page detail: hide write controls for viewers (backend still enforces 403)
   const pageIconBtn = $("#page-icon-btn");
@@ -5224,6 +5276,7 @@ async function toggleChatLive() {
       method: "PUT",
       body: JSON.stringify({ enabled: next }),
     });
+    if (checkPending(res)) return;
     chatLive = !!res.enabled;
     if (btn) btn.setAttribute("aria-pressed", chatLive ? "true" : "false");
     updateChatSubtitle((await api("/api/chat/agent")).active || []);
@@ -5388,8 +5441,9 @@ function bindAgentMemoryListActions(root, a) {
       }
       clearTimeout(timer);
       try {
-        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
+        const res = await api(`/api/agents/${a.id}/memory/${mid}`, { method: "DELETE" });
         await loadAgents();
+        if (checkPending(res)) return;
         if (agentDetailsState.panelOpen) {
           refreshPanelMemory();
         } else {
@@ -5437,13 +5491,19 @@ function bindAgentMemory(root, a, opts = {}) {
     const mid = saveBtn.dataset.memUpdate;
     statusEl.textContent = "Saving\u2026";
     try {
+      let res;
       if (mid) {
-        await api(`/api/agents/${a.id}/memory/${mid}`, { method: "PUT", body: JSON.stringify({ kind, key, content }) });
+        res = await api(`/api/agents/${a.id}/memory/${mid}`, { method: "PUT", body: JSON.stringify({ kind, key, content }) });
       } else {
-        await api(`/api/agents/${a.id}/memory`, { method: "POST", body: JSON.stringify({ kind, key, content }) });
+        res = await api(`/api/agents/${a.id}/memory`, { method: "POST", body: JSON.stringify({ kind, key, content }) });
       }
       statusEl.textContent = "";
       await loadAgents();
+      if (checkPending(res)) {
+        if (panel) refreshPanelMemory();
+        else closeDialog();
+        return;
+      }
       toast(mid ? "Memory updated" : "Memory saved", "success");
       if (panel) {
         refreshPanelMemory();
@@ -6025,10 +6085,11 @@ function renderAgentDetailsPanel() {
       saveBtn.disabled = true;
       saveBtn.textContent = "Saving\u2026";
       try {
-        await api(`/api/agents/${a.id}`, { method: "PUT", body: JSON.stringify({ name: nName, description: nDesc, system_prompt: nPrompt, icon: iconSel }) });
+        const res = await api(`/api/agents/${a.id}`, { method: "PUT", body: JSON.stringify({ name: nName, description: nDesc, system_prompt: nPrompt, icon: iconSel }) });
         await loadAgents();
         agentDetailsState.mode = "view";
         renderAgentDetailsPanel();
+        if (checkPending(res)) return;
         toast("Agent updated", "success");
       } catch (err) {
         toast(err.message, "error");
@@ -6118,17 +6179,20 @@ async function handleAgentsRowClick(e) {
     const turningOn = !(Array.isArray(agentsState.active_ids) ? agentsState.active_ids : []).includes(id);
     try {
       if (turningOn) {
-        await api(`/api/agents/${id}/active`, { method: "POST" });
+        const res = await api(`/api/agents/${id}/active`, { method: "POST" });
+        if (checkPending(res)) { await loadAgents(); return; }
         agentsState.active_ids = [...((agentsState.active_ids || []).filter((x) => x !== id)), id];
         if (agentsState.active_id == null) agentsState.active_id = id;
         if (!agentsState.enabled) {
-          await api("/api/chat/agent", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+          const eres = await api("/api/chat/agent", { method: "PUT", body: JSON.stringify({ enabled: true }) });
+          if (checkPending(eres)) { await loadAgents(); return; }
           agentsState.enabled = true;
         }
         renderAgents();
         toast(`Agent ON \u2014 \u201c${agent?.name || ""}\u201d ab Chat ke liye ready hai`);
       } else {
-        await api("/api/agents/off", { method: "POST", body: JSON.stringify({ id }) });
+        const res = await api("/api/agents/off", { method: "POST", body: JSON.stringify({ id }) });
+        if (checkPending(res)) { await loadAgents(); return; }
         agentsState.active_ids = (agentsState.active_ids || []).filter((x) => x !== id);
         if (agentsState.active_id === id) {
           agentsState.active_id = agentsState.active_ids[0] ?? null;
@@ -6151,9 +6215,10 @@ async function handleAgentsRowClick(e) {
     const a = agentsState.agents.find((x) => x.id === id);
     confirmDialog(`Delete agent "${a?.name || "this agent"}"?`, async () => {
       try {
-        await api(`/api/agents/${id}`, { method: "DELETE" });
+        const res = await api(`/api/agents/${id}`, { method: "DELETE" });
         if (agentsState.active_id === id) agentsState.active_id = null;
         await loadAgents();
+        if (checkPending(res)) return;
         toast("Agent deleted", "success");
       } catch (err) {
         toast(err.message, "error");
@@ -6167,6 +6232,7 @@ function initAgents() {
     const next = !agentsState.enabled;
     try {
       const res = await api("/api/chat/agent", { method: "PUT", body: JSON.stringify({ enabled: next }) });
+      if (checkPending(res)) { await loadAgents(); return; }
       agentsState.enabled = !!res.enabled;
       if (res.active_id != null) agentsState.active_id = res.active_id;
       renderAgents();
@@ -6193,7 +6259,7 @@ function initAgents() {
     }
     if (statusEl) statusEl.textContent = "Creating\u2026";
     try {
-      await api("/api/agents", { method: "POST", body: JSON.stringify({ name, description: desc, system_prompt: prompt, icon: agentsNewIcon }) });
+      const res = await api("/api/agents", { method: "POST", body: JSON.stringify({ name, description: desc, system_prompt: prompt, icon: agentsNewIcon }) });
       $("#agent-name-input").value = "";
       $("#agent-desc-input").value = "";
       $("#agent-prompt-input").value = "";
@@ -6202,6 +6268,7 @@ function initAgents() {
       if (iconBtn) iconBtn.innerHTML = "📦";
       if (statusEl) statusEl.textContent = "";
       await loadAgents();
+      if (checkPending(res)) return;
       toast("Agent created", "success");
     } catch (err) {
       toast(err.message, "error");
@@ -6210,6 +6277,114 @@ function initAgents() {
     }
   });
   $("#agents-grid")?.addEventListener("click", handleAgentsRowClick);
+}
+
+// ---------- Approvals (admin confirmation for AI & Tools changes) ----------
+
+const APPROVAL_KIND_LABELS = {
+  ai_models: "AI Models",
+  agents: "Agents",
+  tools: "API Tools",
+};
+
+function approvalStatusBadge(status) {
+  const map = {
+    pending: ["bg-amber-500/12 text-amber-600 dark:text-amber-400", "Pending"],
+    approved: ["bg-emerald-500/12 text-emerald-600 dark:text-emerald-400", "Approved"],
+    rejected: ["bg-destructive/12 text-destructive", "Rejected"],
+    cancelled: ["bg-muted text-muted-foreground", "Cancelled"],
+    failed: ["bg-destructive/12 text-destructive", "Failed"],
+  };
+  const [cls, label] = map[status] || ["bg-muted text-muted-foreground", status];
+  return `<span class="inline-flex items-center rounded-md px-2 py-0.5 text-[10px] font-semibold ${cls}">${label}</span>`;
+}
+
+async function loadApprovals() {
+  const list = $("#approvals-list");
+  const empty = $("#approvals-empty");
+  if (!list) return;
+  let res;
+  try {
+    res = await api("/api/change-requests");
+  } catch (err) {
+    if (list) list.innerHTML = `<div class="p-6 text-center text-sm text-destructive">${escapeHtml(err.message)}</div>`;
+    return;
+  }
+  const subtitle = $("#approvals-subtitle");
+  if (subtitle) {
+    subtitle.textContent = res.is_admin
+      ? "AI Models & Agents ki changes jo aap ki confirmation ka intezaar kar rahi hain."
+      : "Aap ki bheji hui changes ka status — admin approve karega to system par lagu hongi.";
+  }
+  const rows = res.requests || [];
+  if (empty) empty.classList.toggle("hidden", rows.length > 0);
+  if (!rows.length) {
+    list.innerHTML = "";
+    return;
+  }
+  const canDecide = res.is_admin;
+  list.innerHTML = rows
+    .map((r) => {
+      const isPending = r.status === "pending";
+      const kind = APPROVAL_KIND_LABELS[r.kind] || r.kind || "Change";
+      const buttons = !isPending
+        ? ""
+        : canDecide
+        ? `<button type="button" class="btn btn-primary btn-sm" data-appr-act="approve" data-id="${r.id}">Approve</button>
+           <button type="button" class="btn btn-outline btn-sm" data-appr-act="reject" data-id="${r.id}">Reject</button>`
+        : `<button type="button" class="btn btn-outline btn-sm" data-appr-act="cancel" data-id="${r.id}">Cancel request</button>`;
+      return `
+        <div class="flex flex-col gap-2 p-4 sm:flex-row sm:items-start sm:justify-between" data-approval-row="${r.id}">
+          <div class="min-w-0">
+            <div class="flex flex-wrap items-center gap-2">
+              ${approvalStatusBadge(r.status)}
+              <span class="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">${escapeHtml(kind)}</span>
+            </div>
+            <p class="mt-1.5 text-sm font-medium">${escapeHtml(r.summary || "Change request")}</p>
+            <p class="mt-1 text-xs text-muted-foreground">
+              ${escapeHtml(r.requested_by_name || "User")} (${escapeHtml(r.requested_role || "")}) · ${escapeHtml(fmtStampShort(r.created_at) || r.created_at || "")}
+            </p>
+            ${r.status === "rejected" && r.note ? `<p class="mt-1 text-xs text-destructive">Note: ${escapeHtml(r.note)}</p>` : ""}
+            ${r.status === "failed" && r.note ? `<p class="mt-1 text-xs text-destructive">${escapeHtml(r.note)}</p>` : ""}
+          </div>
+          ${buttons ? `<div class="flex shrink-0 items-center gap-2">${buttons}</div>` : ""}
+        </div>`;
+    })
+    .join("");
+  refreshApprovalsBadge();
+}
+
+async function handleApprovalsClick(e) {
+  const btn = e.target.closest("[data-appr-act]");
+  if (!btn) return;
+  const id = btn.dataset.id;
+  const act = btn.dataset.apprAct;
+  btn.disabled = true;
+  try {
+    if (act === "approve") {
+      const res = await api(`/api/change-requests/${id}/approve`, { method: "POST" });
+      if (checkPending(res)) return;
+      toast("Request approve ho gayi — change lagu ho gaya");
+    } else if (act === "reject") {
+      await api(`/api/change-requests/${id}/reject`, { method: "POST", body: JSON.stringify({}) });
+      toast("Request reject kar di gayi", "info");
+    } else if (act === "cancel") {
+      await api(`/api/change-requests/${id}`, { method: "DELETE" });
+      toast("Request cancel kar di gayi", "info");
+    }
+    await loadApprovals();
+  } catch (err) {
+    toast(err.message, "error");
+    btn.disabled = false;
+  }
+}
+
+function initApprovals() {
+  $("#approvals-btn")?.addEventListener("click", () => switchView("approvals"));
+  $("#approvals-refresh-btn")?.addEventListener("click", loadApprovals);
+  $("#approvals-list")?.addEventListener("click", handleApprovalsClick);
+  refreshApprovalsBadge();
+  setInterval(refreshApprovalsBadge, 60000);
 }
 
 // ---------- Chat AI model switching ----------
@@ -6566,6 +6741,7 @@ function initToolsRouting() {
       const strong = $("#route-strong")?.value || routingState.strong;
       try {
         const r = await api("/api/chat/routing", { method: "PUT", body: JSON.stringify({ auto: routingState.auto, fast, strong }) });
+        if (checkPending(r)) return;
         routingState.auto = (r.auto || "").toString() === "1" || r.auto === true;
         routingState.fast = r.fast || fast;
         routingState.strong = r.strong || strong;
@@ -6656,7 +6832,8 @@ function renderToolsList() {
     b.addEventListener("click", async () => {
       if (!confirm("Is API tool ko hata dein?")) return;
       try {
-        await api(`/api/tools/${b.dataset.delTool}`, { method: "DELETE" });
+        const res = await api(`/api/tools/${b.dataset.delTool}`, { method: "DELETE" });
+        if (checkPending(res)) return;
         routingState.tools = routingState.tools.filter((t) => t.id !== Number(b.dataset.delTool));
         renderToolsList();
         const count = $("#tools-count");
@@ -6686,6 +6863,7 @@ function renderToolsAddForm() {
     if (!name || !url) { toast("Name aur URL dono required hain.", "error"); return; }
     try {
       const created = await api("/api/tools", { method: "POST", body: JSON.stringify({ name, url_template: url, description: desc, enabled: true }) });
+      if (checkPending(created)) return;
       routingState.tools.push(created);
       renderToolsList();
       const count = $("#tools-count");
@@ -6728,6 +6906,7 @@ function editToolRow(id) {
     if (!name || !url) { toast("Name aur URL dono required hain.", "error"); return; }
     try {
       const updated = await api(`/api/tools/${t.id}`, { method: "PUT", body: JSON.stringify({ name, url_template: url, description: desc, enabled }) });
+      if (checkPending(updated)) return;
       routingState.tools = routingState.tools.map((x) => (x.id === updated.id ? updated : x));
       renderToolsList();
       toast("Tool updated.");
@@ -7059,7 +7238,9 @@ async function saveChatSetting(provider) {
   if (tempEl && tempEl.value) body.temperature = parseFloat(tempEl.value);
   if (mtokEl && mtokEl.value) body.max_tokens = parseInt(mtokEl.value, 10);
   try {
-    chatSettings = await api("/api/chat/settings", { method: "PUT", body: JSON.stringify(body) });
+    const res = await api("/api/chat/settings", { method: "PUT", body: JSON.stringify(body) });
+    if (checkPending(res)) return;
+    chatSettings = res;
     renderChatSettings();
     loadChatModels();
     toast("Saved to .env + database", "success");
@@ -7078,7 +7259,9 @@ async function addChatKey(provider) {
     return;
   }
   try {
-    chatSettings = await api("/api/chat/keys", { method: "POST", body: JSON.stringify({ provider, label, api_key }) });
+    const res = await api("/api/chat/keys", { method: "POST", body: JSON.stringify({ provider, label, api_key }) });
+    if (checkPending(res)) return;
+    chatSettings = res;
     renderChatSettings();
     loadChatModels();
     toast("API key added \u2014 it's ready to use", "success");
@@ -7089,7 +7272,9 @@ async function addChatKey(provider) {
 
 async function activateChatKey(provider, keyId) {
   try {
-    chatSettings = await api("/api/chat/keys/active", { method: "POST", body: JSON.stringify({ provider, key_id: keyId }) });
+    const res = await api("/api/chat/keys/active", { method: "POST", body: JSON.stringify({ provider, key_id: keyId }) });
+    if (checkPending(res)) return;
+    chatSettings = res;
     renderChatSettings();
     toast("Active key changed", "success");
   } catch (e) {
@@ -7099,7 +7284,9 @@ async function activateChatKey(provider, keyId) {
 
 async function toggleChatKey(provider, keyId, enabled) {
   try {
-    chatSettings = await api(`/api/chat/keys/${keyId}`, { method: "PUT", body: JSON.stringify({ provider, enabled }) });
+    const res = await api(`/api/chat/keys/${keyId}`, { method: "PUT", body: JSON.stringify({ provider, enabled }) });
+    if (checkPending(res)) return;
+    chatSettings = res;
     renderChatSettings();
     toast(enabled ? "Key enabled" : "Key disabled", "success");
   } catch (e) {
@@ -7114,7 +7301,9 @@ function deleteChatKey(provider, keyId) {
   const label = (masked && masked.label) || "key";
   confirmDialog(`Remove the ${label} key from ${((chatSettings.meta || {})[provider] || {}).label || provider}?`, async () => {
     try {
-      chatSettings = await api(`/api/chat/keys/${keyId}`, { method: "DELETE" });
+      const res = await api(`/api/chat/keys/${keyId}`, { method: "DELETE" });
+      if (checkPending(res)) return;
+      chatSettings = res;
       renderChatSettings();
       toast("Key removed", "success");
     } catch (e) {
@@ -7184,10 +7373,12 @@ function resetChatTuning(provider) {
 
 async function activateChatProvider(provider) {
   try {
-    chatSettings = await api("/api/chat/settings/active", {
+    const res = await api("/api/chat/settings/active", {
       method: "POST",
       body: JSON.stringify({ provider }),
     });
+    if (checkPending(res)) return;
+    chatSettings = res;
     renderChatSettings();
     loadChatModels();
     toast(`Active model: ${chatSettings.active_label}`, "success");
@@ -7200,7 +7391,9 @@ function removeChatKey(provider) {
   const label = ((chatSettings.meta || {})[provider] || {}).label || provider;
   confirmDialog(`Remove the saved API key for ${label}?`, async () => {
     try {
-      chatSettings = await api(`/api/chat/settings/${encodeURIComponent(provider)}`, { method: "DELETE" });
+      const res = await api(`/api/chat/settings/${encodeURIComponent(provider)}`, { method: "DELETE" });
+      if (checkPending(res)) return;
+      chatSettings = res;
       renderChatSettings();
       loadChatModels();
       toast("API key removed", "success");
@@ -7419,6 +7612,7 @@ function initApp() {
   initChat();
   initKnowledge();
   initAgents();
+  initApprovals();
   $("#notes-add-btn").addEventListener("click", () => openEditor(null));
   $("#pages-add-btn").addEventListener("click", () => pageCreateDialog());
 
@@ -8145,7 +8339,7 @@ function initApp() {
     .then(() => {
       const segs = initialHash.replace(/^#\/?/, "").split("/").filter(Boolean);
       const v = segs[0];
-      const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents", "system-guide"];
+  const VIEWS = ["tasks", "notes", "pages", "webportals", "schedule", "calendar", "settings", "chat", "knowledge", "chat-settings", "agents", "system-guide", "approvals"];
       if (v === "pages") {
         const pid = Number(segs[1]);
         if (segs[1] && state.pages.some((p) => p.id === pid)) showPageDetail(pid);
