@@ -4078,7 +4078,7 @@ function renderPortals() {
       (p, i) => `
       <div class="group relative cursor-pointer rounded-xl border border-border bg-card p-4 transition-colors hover:border-primary/50 hover:shadow-md" data-open-portal="${i}">
         <div class="flex items-center gap-3">
-          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold text-white" style="background:${portalAvatarStyle(p.name || "?")}">${escapeHtml((p.name || "?")[0].toUpperCase())}</span>
+          <span class="flex h-10 w-10 shrink-0 items-center justify-center rounded-lg text-sm font-bold ${p.icon ? "border border-border bg-background" : "text-white"}" style="${p.icon ? "" : `background:${portalAvatarStyle(p.name || "?")}`}">${p.icon ? pageIconHTML(p.icon, "h-6 w-6") : escapeHtml((p.name || "?")[0].toUpperCase())}</span>
           <div class="min-w-0">
             <p class="truncate text-sm font-semibold">${escapeHtml(p.name)}</p>
             <p class="truncate text-xs text-muted-foreground">${escapeHtml(hostOf(p.url))}</p>
@@ -4145,7 +4145,8 @@ function renderPortals() {
 function portalDialog(idx) {
   const list = getPortals();
   const editing = idx != null && list[idx];
-  const src = editing || { name: "", url: "", notes: "", type: "web" };
+  const src = editing || { name: "", url: "", notes: "", type: "web", icon: "" };
+  let portalIcon = (editing && (src.icon || "")) || "";
   const typeOpt = (val, label) => `<option value="${val}"${src.type === val ? " selected" : ""}>${label}</option>`;
   openDialog(`
     <div class="flex items-start gap-3">
@@ -4158,6 +4159,14 @@ function portalDialog(idx) {
       </div>
     </div>
     <form id="portal-form" class="mt-4 space-y-3">
+      <div class="flex items-center gap-3">
+        <button type="button" id="portal-icon-btn" class="flex h-11 w-11 shrink-0 items-center justify-center rounded-lg border border-border text-xl hover:bg-accent" title="Choose icon">${src.icon ? pageIconHTML(src.icon, "h-6 w-6") : escapeHtml((src.name || "?")[0].toUpperCase())}</button>
+        <div class="flex-1">
+          <p class="text-sm font-medium">Icon</p>
+          <p class="text-xs text-muted-foreground">Auto se portal ka pehla letter aata hai — chahein to koi bhi icon choose kar sakte hain.</p>
+        </div>
+      </div>
+      <div id="portal-icon-picker" class="hidden rounded-lg border border-border p-3">${buildIconPickerHTML()}</div>
       <input id="portal-name" required type="text" maxlength="40" placeholder="Portal name (e.g. Gmail)" class="input w-full" value="${escapeHtml(src.name)}">
       <select id="portal-type" class="input w-full" title="Portal type">
         ${typeOpt("web", "Website")}
@@ -4172,6 +4181,16 @@ function portalDialog(idx) {
     </form>
   `);
   $("#portal-form [data-cancel-dialog]").addEventListener("click", closeDialog);
+  $("#portal-icon-btn").addEventListener("click", () => {
+    const picker = $("#portal-icon-picker");
+    picker.classList.toggle("hidden");
+  });
+  bindIconPicker($("#portal-icon-picker"), (em) => {
+    portalIcon = em || "";
+    const btn = $("#portal-icon-btn");
+    btn.innerHTML = portalIcon ? pageIconHTML(portalIcon, "h-6 w-6") : escapeHtml((src.name || "?")[0].toUpperCase());
+    toast("Icon updated");
+  });
   $("#portal-form").addEventListener("submit", async (e) => {
     e.preventDefault();
     const name = $("#portal-name").value.trim();
@@ -4179,7 +4198,7 @@ function portalDialog(idx) {
     const notes = $("#portal-notes").value.trim();
     const type = $("#portal-type").value;
     if (!name || !url) return;
-    const body = { name, url, notes, type };
+    const body = { name, url, notes, type, icon: portalIcon };
     const existed = editing && editing.id != null;
     let row;
     try {

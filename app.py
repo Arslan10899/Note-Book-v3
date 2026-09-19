@@ -573,6 +573,7 @@ CREATE TABLE IF NOT EXISTS web_portals (
     url TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL DEFAULT 'web',
+    icon TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '',
@@ -646,6 +647,9 @@ def migrate_db():
         task_cols = [r[1] for r in conn.execute("PRAGMA table_info(tasks)").fetchall()]
         if "created_by" not in task_cols:
             conn.execute("ALTER TABLE tasks ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
+        portal_cols = [r[1] for r in conn.execute("PRAGMA table_info(web_portals)").fetchall()]
+        if "icon" not in portal_cols:
+            conn.execute("ALTER TABLE web_portals ADD COLUMN icon TEXT NOT NULL DEFAULT ''")
         note_cols = [r[1] for r in conn.execute("PRAGMA table_info(notes)").fetchall()]
         if "created_by" not in note_cols:
             conn.execute("ALTER TABLE notes ADD COLUMN created_by TEXT NOT NULL DEFAULT ''")
@@ -772,6 +776,7 @@ CREATE TABLE IF NOT EXISTS web_portals (
     url TEXT NOT NULL,
     notes TEXT NOT NULL DEFAULT '',
     type TEXT NOT NULL DEFAULT 'web',
+    icon TEXT NOT NULL DEFAULT '',
     position INTEGER NOT NULL DEFAULT 0,
     created_by TEXT NOT NULL DEFAULT '',
     created_at TEXT NOT NULL DEFAULT '',
@@ -7151,6 +7156,7 @@ def web_portals_create():
     ptype = str(data.get("type") or "web").strip().lower()
     if ptype not in ("web", "sheet"):
         ptype = "web"
+    icon = str(data.get("icon") or "").strip()[:60]
     if not name or not url:
         return jsonify({"error": "Name aur URL required hain"}), 400
     if not url.lower().startswith(("http://", "https://")):
@@ -7159,9 +7165,9 @@ def web_portals_create():
     stamp = now_stamp()
     conn = get_db()
     cur = conn.execute(
-        "INSERT INTO web_portals (name, url, notes, type, position, created_by, created_at, updated_at) "
-        "VALUES (?, ?, ?, ?, COALESCE((SELECT MAX(position)+1 FROM web_portals), 0), ?, ?, ?)",
-        (name, url, notes, ptype, uname, stamp, stamp),
+        "INSERT INTO web_portals (name, url, notes, type, icon, position, created_by, created_at, updated_at) "
+        "VALUES (?, ?, ?, ?, ?, COALESCE((SELECT MAX(position)+1 FROM web_portals), 0), ?, ?, ?)",
+        (name, url, notes, ptype, icon, uname, stamp, stamp),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (cur.lastrowid,)).fetchone()
@@ -7184,6 +7190,7 @@ def web_portals_update(portal_id):
     ptype = str(data.get("type") if "type" in data else row["type"]).strip().lower()
     if ptype not in ("web", "sheet"):
         ptype = row["type"]
+    iconv = str(data.get("icon") if "icon" in data else row["icon"]).strip()[:60]
     if not name or not url:
         conn.close()
         return jsonify({"error": "Name aur URL required hain"}), 400
@@ -7191,8 +7198,8 @@ def web_portals_update(portal_id):
         conn.close()
         return jsonify({"error": "Valid URL (http/https) required hain"}), 400
     conn.execute(
-        "UPDATE web_portals SET name=?, url=?, notes=?, type=?, updated_at=? WHERE id=?",
-        (name, url, notes, ptype, now_stamp(), portal_id),
+        "UPDATE web_portals SET name=?, url=?, notes=?, type=?, icon=?, updated_at=? WHERE id=?",
+        (name, url, notes, ptype, iconv, now_stamp(), portal_id),
     )
     conn.commit()
     row = conn.execute("SELECT * FROM web_portals WHERE id = ?", (portal_id,)).fetchone()
